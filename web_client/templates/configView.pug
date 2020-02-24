@@ -1,0 +1,18 @@
+.g-config-breadcrumb-container
+
+#g-wt-versioning-options.panel-group
+  .panel.panel-default
+    .panel-heading
+      .panel-title WholeTale Versioning Plugin Configuration
+      .panel-body
+        form#g-wt-versioning-config-form.g-wt-versioning-config-form(role="form")
+          .form-group
+            label.control-label(for="g-wt-versioning-homedir-root") Versions Directories Root
+            input#g-wt-versioning-versions-root.input-sm.form-control(
+                type="text", placeholder="Versions Directories Root")
+          .form-group
+            label.control-label(for="g-wt-versioning-runs-root") Runs Directories Root
+            input#g-wt-versioning-runs-root.input-sm.form-control(
+                type="text", placeholder="Runs Directories Root")
+          p#g-wt-versioning-error-message.g-validation-failed-message()
+          input.btn.btn-sm.btn-primary(type="submit", value="Save")
