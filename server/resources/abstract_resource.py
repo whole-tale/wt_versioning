@@ -41,8 +41,9 @@ class AbstractVRResource(Resource):
         if not ModelImporter.model(model, model_plugin).hasAccess(instance, user, AccessType.WRITE):
             raise RestException('Access denied', code=403)
 
-    def _getTaleAndRoot(self, instance: dict) -> Tuple[dict, dict]:
-        tale = Tale().findOne({'_id': instance['taleId']})
+    def _getTaleAndRoot(self, instance: dict = None, tale: dict = None) -> Tuple[dict, dict]:
+        if tale is None:
+            tale = Tale().findOne({'_id': instance['taleId']})
         global_root = getOrCreateRootFolder(self.rootDirName)
         root = Folder().findOne({'parentId': global_root['_id'], 'name': str(tale['_id'])})
         return (tale, root)
@@ -68,9 +69,12 @@ class AbstractVRResource(Resource):
         folder = Folder().createFolder(rootFolder, name, creator=self.getCurrentUser())
         dirname = str(folder['_id'])
         dir = rootDir / dirname
-        dir.mkdir()
+        dir.mkdir(parents=True)
         folder.update({'fsPath': dir.absolute().as_posix(), 'isMapping': True})
         Folder().save(folder, validate=False, triggerEvents=False)
+
+        # update the time
+        Folder().updateFolder(rootFolder)
         return (folder, dir)
 
     def getRoot(self, instance: dict) -> dict:
@@ -80,11 +84,15 @@ class AbstractVRResource(Resource):
 
     def clear(self, root: dict) -> None:
         self._checkAccess(root)
-        versions = Folder().find({'parentId': root['_id']})
+        subdirs = Folder().find({'parentId': root['_id']})
         n = 0
-        for v in versions:
+        for v in subdirs:
             n += 1
-            path = v['fsPath']
+            if 'fsPath' in v:
+                path = v['fsPath']
+            else:
+                path = 'Unknown'
+                logger.warn('Missing fspath: %s' % v)
             Folder().remove(v)
             logger.info('Directory not removed: %s' % path)
         return 'Deleted %s versions' % n
