@@ -319,7 +319,11 @@ class Version(AbstractVRResource):
             else:
                 crtcstr = crtc.absolute().as_posix()
                 newcstr = newc.absolute().as_posix()
-                os.link(crtcstr, newcstr)
+                try:
+                    os.link(crtcstr, newcstr)
+                except:
+                    logger.warn('link %s -> %s' % (crtcstr, newcstr))
+                    raise
                 shutil.copystat(crtcstr, newcstr)
 
     def _sameData(self, old: List[dict], crt: List[dict]):
