@@ -15,7 +15,7 @@ var ConfigView = View.extend({
     ],
 
     settingControlId: function (key) {
-        return '#g-wt-versioning-' + key.substring(5).replace(/_/g, '-');
+        return '#g-wt-versioning-' + key.replace(/wtversioning\./g, '').replace(/_/g, '-');
     },
 
     events: {
@@ -78,7 +78,7 @@ var ConfigView = View.extend({
         return this;
     },
 
-    _saveSettings: function (providerId, settings) {
+    _saveSettings: function (settings) {
         restRequest({
             type: 'PUT',
             path: 'system/setting',
