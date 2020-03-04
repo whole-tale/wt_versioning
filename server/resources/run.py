@@ -1,27 +1,25 @@
-import os
+import math
+import random
 import shutil
+import time as t
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, List
+from threading import Thread
+from typing import Union
 
-import pathvalidate
-import pymongo
+import cherrypy
 
 from girder import logger
 from girder.api import access
 from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
 from girder.constants import TokenScope
-from girder.exceptions import RestException
 from girder.models.folder import Folder
 from girder.plugins.wholetale.models.instance import Instance
 from girder.plugins.wholetale.models.tale import Tale
-from girder.plugins.wholetale.utils import getOrCreateRootFolder
-from girder.plugins.wt_data_manager.models.session import Session
 from .abstract_resource import AbstractVRResource
-from ..constants import Constants, RunStatus
+from ..constants import Constants, RunStatus, RunState
 from ..lib import util
-
 
 FIELD_SEQENCE_NUMBER = 'seq'
 FIELD_STATUS_CODE = 'runStatusCode'
@@ -34,12 +32,13 @@ class Run(AbstractVRResource):
         self.route('PATCH', (':id', 'stream'), self.stream)
         self.route('PATCH', (':id', 'status'), self.setStatus)
         self.route('GET', (':id', 'status'), self.status)
+        self.route('GET', (':id', 'fakeAnActualRun'), self.fakeAnActualRun)
 
 
     @access.user()
     @filtermodel('folder')
     @autoDescribeRoute(
-        Description('Retrieves the versions root folder for this instance.')
+        Description('Retrieves the runs root folder for this instance.')
             .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True)
             .errorResponse(
             'Access was denied (if current user does not have write access to this tale '
@@ -77,7 +76,7 @@ class Run(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Returns a runs folder.')
-            .modelParam('runId', 'The ID of a runs folder', model=Folder, force=True,
+            .modelParam('id', 'The ID of a run folder', model=Folder, force=True,
                         destName='rfolder')
             .errorResponse(
             'Access was denied (if current user does not have read access to the respective run '
@@ -102,20 +101,21 @@ class Run(AbstractVRResource):
     )
     def create(self, version: dict, name: str = None) -> dict:
         versionsRoot = Folder().load(version['parentId'], force=True)
-        instance = Instance().load(versionsRoot['instanceId'], force=True)
+        taleId = versionsRoot['taleId']
+        tale = Tale().load(taleId, force=True)
 
-        (tale, root) = self._getTaleAndRoot(instance)
+        (tale, root) = self._getTaleAndRoot(tale=tale)
         self._checkAccess(root)
         self._checkNameSanity(name, root)
 
-        rootDir = util.getTaleRootDirPath(tale)
+        rootDir = util.getTaleRunsDirPath(tale)
 
         return self._create(version, name, root, rootDir)
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Deletes a run.')
-            .modelParam('runId', 'The ID of run folder', model=Folder, force=True,
+            .modelParam('id', 'The ID of run folder', model=Folder, force=True,
                         destName='rfolder')
             .errorResponse(
             'Access was denied (if current user does not have write access to this tale instance)',
@@ -165,15 +165,15 @@ class Run(AbstractVRResource):
                     'statusString. The possible values for status, an integer, are 0, 1, 2, 3, 4, '
                     '5, with statusString being, respectively, UNKNOWN, STARTING, RUNNING, '
                     'COMPLETED, FAILED, CANCELLED.')
-            .modelParam('runId', 'The ID of a run.', model=Folder, force=True, destName='run')
+            .modelParam('id', 'The ID of a run.', model=Folder, force=True, destName='rfolder')
             .errorResponse(
             'Access was denied (if current user does not have read access to this run)',
             403)
     )
-    def status(self, run: dict) -> dict:
-        self._checkAccess(run)
-        if FIELD_STATUS_CODE in run:
-            rs = RunStatus.get(run[FIELD_STATUS_CODE])
+    def status(self, rfolder: dict) -> dict:
+        self._checkAccess(rfolder)
+        if FIELD_STATUS_CODE in rfolder:
+            rs = RunStatus.get(rfolder[FIELD_STATUS_CODE])
         else:
             rs = RunStatus.UNKNOWN
         return {'status': rs.code, 'statusString': rs.name}
@@ -182,39 +182,61 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Sets the status of the run. See the status query endpoint for details about '
                     'the meaning of the code.')
-            .modelParam('runId', 'The ID of a run.', model=Folder, force=True, destName='run')
+            .modelParam('id', 'The ID of a run.', model=Folder, force=True, destName='rfolder')
             .param('status', 'The status code.', dataType='integer', required=True)
             .errorResponse(
             'Access was denied (if current user does not have read access to this run)',
             403)
     )
-    def setStatus(self, run: dict, status: int) -> None:
-        self._checkAccess(run)
-        run[FIELD_STATUS_CODE] = status
-        Folder().save(run)
+    def setStatus(self, rfolder: dict, status: Union[int, RunStatus]) -> None:
+        self._checkAccess(rfolder)
+        self._setStatus(rfolder, status)
+
+    def _setStatus(self, rfolder: dict, status: Union[int, RunStatus]) -> None:
+        # TODO: add heartbeats (runs must regularly update status, otherwise they are considered
+        # failed)
+        if isinstance(status, int):
+            status = RunState.ALL[status]
+        rfolder[FIELD_STATUS_CODE] = status.code
+        Folder().save(rfolder)
+        runDir = Path(rfolder['fsPath'])
+        self._write_status(runDir, status)
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Appends data to the .stdout and .stderr files. One of stdoutData and '
                     'stderrData parameters is required.')
-            .modelParam('runId', 'The ID of a run.', model=Folder, force=True, destName='run')
+            .modelParam('id', 'The ID of a run.', model=Folder, force=True, destName='rfolder')
             .param('stdoutData', 'Data to append to .stdout', dataType='string', required=False)
             .param('stderrData', 'Data to append to .stderr', dataType='string', required=False)
             .errorResponse(
             'Access was denied (if current user does not have read access to this run)',
             403)
     )
-    def stream(self, run: dict, stdoutData: str = None, stderrData: str = None) -> None:
-        runDir = Path(run['fsPath'])
+    def stream(self, rfolder: dict, stdoutData: str = None, stderrData: str = None) -> None:
+        self._stream(rfolder, stdoutData, stderrData)
+
+    def _stream(self, rfolder: dict, stdoutData: str = None, stderrData: str = None) -> None:
+        runDir = Path(rfolder['fsPath'])
+        new = False
         if stdoutData is not None:
-            self._append(runDir, '.stdout', stdoutData)
+            new |= self._append(runDir, '.stdout', stdoutData)
         if stderrData is not None:
-            self._append(runDir, '.stderr', stderrData)
+            new |= self._append(runDir, '.stderr', stderrData)
+        if new:
+            # Girder does not change the 'updated' attribute on a parent folder when a child
+            # is added. This is a bit different here, since runDir is the root of a virtual object
+            # hierarchy and, while there is an actual folder on disk corresponding to it, which
+            # does have a proper modified/updated time, this does not get 'propagated' to the
+            # girder object, so we manually set the updated field when a new file appears.
+            Folder().updateFolder(rfolder)
 
     def _append(self, dir: Path, filename: str, data: str):
         file = dir / filename
+        new = not file.exists()
         with open(file.as_posix(), 'a') as f:
             f.write(data)
+        return new
 
     def _create(self, version: dict, name: str, root: dict, rootDir: Path) -> None:
         ro = True
@@ -232,19 +254,61 @@ class Run(AbstractVRResource):
         #  @version -> ../Versions/<version> (link handled manually by FS)
         #  @data -> version/data (link handled manualy by FS)
         #  @workspace -> version/workspace (same)
-        #  output
-        #  .status (faked by the run FS)
-        #  .stdout (created by the run itself)
-        #  .stderr (same)
+        #  results
+        #  .status
+        #  .stdout (created using stream() above)
+        #  .stderr (-''-)
 
-        (runDir / 'version').mkdir()
+        (runDir / 'version').symlink_to('../../Versions/%s' % version['_id'], True)
         (runDir / 'data').symlink_to('version/data', True)
         (runDir / 'workspace').symlink_to('version/workspace', True)
-        (runDir / 'output').mkdir()
+        (runDir / 'results').mkdir()
+        self._write_status(runDir, RunStatus.UNKNOWN)
 
         return runFolder
+
+    def _write_status(self, runDir: Path, status: RunStatus):
+        with open(runDir / '.status', 'w') as f:
+            f.write('%s %s' % (status.code, status.name))
 
     def _generateName(self):
         now = datetime.now()
         return now.strftime(RUN_NAME_FORMAT)
 
+    @access.user()
+    @filtermodel('folder')
+    @autoDescribeRoute(
+        Description('Fakes a run. Slowly updates the status, adds text to stdout/stderr, and puts'
+                    'files in the results dir.')
+            .modelParam('id', 'The ID of a run folder.', model=Folder, force=True,
+                        destName='rfolder')
+            .errorResponse(
+            'Access was denied (if current user does not have write access to this run)', 403)
+    )
+    def fakeAnActualRun(self, rfolder: dict) -> None:
+        t = Thread(target=self._fakeRun, args=(rfolder, self.getCurrentToken()))
+        t.start()
+
+    def _fakeRun(self, rfolder: dict, token: dict) -> None:
+        cherrypy.request.girderToken = token;
+        cherrypy.request.params = {}
+        try:
+            self._setStatus(rfolder, RunStatus.STARTING)
+            self._wait(5)
+            rdir = Path(rfolder['fsPath'])
+            resultsDir = rdir / 'results'
+
+            self._setStatus(rfolder, RunStatus.RUNNING)
+            with open(resultsDir / 'output.dat', 'w') as fo:
+                for _ in range(200):
+                    fo.write('data')
+                    fo.flush()
+                    self._stream(rfolder, '%s: Step %s\n' % (datetime.now(), _))
+                    self._wait(1)
+
+            self._setStatus(rfolder, RunStatus.COMPLETED)
+        except Exception as ex:
+            logger.warn('Exception faking run', ex)
+
+    def _wait(self, secs):
+        t.sleep(max(0.1, random.normalvariate(secs, math.sqrt(secs))))
