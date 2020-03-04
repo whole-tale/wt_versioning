@@ -31,9 +31,9 @@ class Version(AbstractVRResource):
     def __init__(self):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
+        self.route('GET', ('latest',), self.getLatestVersion)
 
     @access.user()
-    @filtermodel('folder')
     @autoDescribeRoute(
         Description('Retrieves the versions root folder for this instance.')
             .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True)
@@ -95,7 +95,7 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Returns a version folder.')
-            .modelParam('versionId', 'The ID of a version folder', model=Folder, force=True,
+            .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
                         destName='vfolder')
             .errorResponse(
             'Access was denied (if current user does not have read access to the respective version '
@@ -142,7 +142,7 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Deletes a version.')
-            .modelParam('versionId', 'The ID of version folder', model=Folder, force=True,
+            .modelParam('id', 'The ID of version folder', model=Folder, force=True,
                         destName='vfolder')
             .errorResponse('Access was denied (if current user does not have write access to this '
                            'tale instance)', 403)
@@ -197,6 +197,18 @@ class Version(AbstractVRResource):
     def exists(self, root: dict, name: str):
         return super().exists(root, name)
 
+    @access.user(TokenScope.DATA_READ)
+    @filtermodel('folder')
+    @autoDescribeRoute(
+        Description('Retrieves the latest version.')
+            .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
+                        destName='root')
+            .errorResponse('Access was denied (if current user does not have read access to this '
+                           'tale instance)', 403)
+    )
+    def getLatestVersion(self, root: dict) -> dict:
+        return self._getLastVersion(root)
+
     def _setCriticalSectionFlag(self, root: dict) -> bool:
         return self._updateCriticalSectionFlag(root, True)
 
@@ -236,7 +248,7 @@ class Version(AbstractVRResource):
             oldVersion = None
             oldDataset = None
 
-        (newVersionFolder, newVersionDir) = self._createSubDir(versionsDir, versionsRoot, name)
+        (newVersionFolder, newVersionDir) = self._createSubdir(versionsDir, versionsRoot, name)
 
         session = Session().findOne({'_id': instance['sessionId']})
         dataSet = session['dataSet']
@@ -273,7 +285,15 @@ class Version(AbstractVRResource):
         implementation of the virtual objects does not seem to have a straightforward way of
         embedding pure girder folders inside a virtual tree. The solution currently adopted to
         address this issue involves storing the dataset in the version folder itself, which, for
-        efficiency reasons remains a Girder folder (but also a virtual_resources root).'''
+        efficiency reasons remains a Girder folder (but also a virtual_resources root).
+
+        It may be relevant to note that this implementation uses option (b) in the above document
+        with respect to the meaning of "copy" in step 4.1.2.1. To be more precise, when a file is
+        changed in the current workspace, the new version will hard link to the file in question
+        instead of doing an actual copy. This allows for O(1) equality comparisons between files,
+        but requires that modifications to files in the workspace always create a new file (which
+        is the case if files are only modified through the WebDAV FS mounted in a tale container).
+        '''
 
         oldWorkspace = None if oldVersion is None else oldVersion / 'workspace'
         try:
