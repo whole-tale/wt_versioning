@@ -20,6 +20,7 @@ class RunState:
         self.name = name
         RunState.ALL[code] = self
 
+
 class RunStatus:
     UNKNOWN = RunState(0, 'UNKNOWN')
     STARTING = RunState(1, 'STARTING')
@@ -31,4 +32,3 @@ class RunStatus:
     @classmethod
     def get(cls, code: int) -> RunState:
         return RunState.ALL[code]
-

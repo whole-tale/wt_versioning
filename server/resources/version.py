@@ -2,20 +2,18 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, List
+from typing import List
 
-import pathvalidate
 import pymongo
 
 from girder import logger
 from girder.api import access
 from girder.api.describe import autoDescribeRoute, Description
-from girder.api.rest import Resource, filtermodel
+from girder.api.rest import filtermodel
 from girder.constants import TokenScope
 from girder.exceptions import RestException
 from girder.models.folder import Folder
 from girder.plugins.wholetale.models.instance import Instance
-from girder.plugins.wholetale.models.tale import Tale
 from girder.plugins.wt_data_manager.models.session import Session
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants
@@ -36,11 +34,10 @@ class Version(AbstractVRResource):
     @access.user()
     @autoDescribeRoute(
         Description('Retrieves the versions root folder for this instance.')
-            .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True,
-                        paramType='query')
-            .errorResponse(
-            'Access was denied (if current user does not have write access to this tale '
-            'instance)', 403)
+        .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True,
+                    paramType='query')
+        .errorResponse('Access was denied (if current user does not have write access to this '
+                       'tale instance)', 403)
     )
     def getRoot(self, instance: dict) -> dict:
         # So we're overriding this because the description above has 'version' in it.
@@ -55,8 +52,8 @@ class Version(AbstractVRResource):
         Description('Clears all versions from an instance, but does not delete the respective '
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
-            .modelParam('rootId', 'The ID of the versions root folder', model=Folder, force=True,
-                        destName='root', paramType='query')
+        .modelParam('rootId', 'The ID of the versions root folder', model=Folder, force=True,
+                    destName='root', paramType='query')
     )
     def clear(self, root: dict) -> None:
         super().clear(root)
@@ -66,13 +63,12 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Rename a version associated with a tale instance. Returns the renamed version '
                     'folder')
-            .modelParam('id', 'The ID of version folder', model=Folder, force=True,
-                        destName='vfolder')
-            .param('newName', 'The new name', required=True, dataType='string')
-            .errorResponse(
-            'Access was denied (if current user does not have write access to this tale '
-            'instance)', 403)
-            .errorResponse('Illegal file name', 400)
+        .modelParam('id', 'The ID of version folder', model=Folder, force=True,
+                    destName='vfolder')
+        .param('newName', 'The new name', required=True, dataType='string')
+        .errorResponse('Access was denied (if current user does not have write access to this '
+                       'tale instance)', 403)
+        .errorResponse('Illegal file name', 400)
     )
     def rename(self, vfolder: dict, newName: str) -> dict:
         return super().rename(vfolder, newName)
@@ -81,11 +77,10 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Returns the dataset associated with a version folder, but with some additional'
                     'entries such as the type of object (folder/item) and the object dictionaries.')
-            .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
-                        destName='vfolder')
-            .errorResponse(
-            'Access was denied (if current user does not have read access to the respective version '
-            'folder.', 403)
+        .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
+                    destName='vfolder')
+        .errorResponse('Access was denied (if current user does not have read access to the '
+                       'respective version folder.', 403)
     )
     def getDataset(self, vfolder: dict) -> dict:
         self._checkAccess(vfolder, model='folder', model_plugin=None)
@@ -96,11 +91,10 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Returns a version folder.')
-            .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
-                        destName='vfolder')
-            .errorResponse(
-            'Access was denied (if current user does not have read access to the respective version '
-            'folder.', 403)
+        .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
+                    destName='vfolder')
+        .errorResponse('Access was denied (if current user does not have read access to the '
+                       'respective version folder.', 403)
     )
     def load(self, vfolder: dict) -> dict:
         return super().load(vfolder)
@@ -143,11 +137,11 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Deletes a version.')
-            .modelParam('id', 'The ID of version folder', model=Folder, force=True,
-                        destName='vfolder')
-            .errorResponse('Access was denied (if current user does not have write access to this '
-                           'tale instance)', 403)
-            .errorResponse('Version is in use by a run and cannot be deleted.', 461)
+        .modelParam('id', 'The ID of version folder', model=Folder, force=True,
+                    destName='vfolder')
+        .errorResponse('Access was denied (if current user does not have write access to this '
+                       'tale instance)', 403)
+        .errorResponse('Version is in use by a run and cannot be deleted.', 461)
     )
     def delete(self, vfolder: dict) -> None:
         self._checkAccess(vfolder)
@@ -162,7 +156,6 @@ class Version(AbstractVRResource):
         finally:
             Version._resetCriticalSectionFlag(root)
 
-
         path = Path(vfolder['fsPath'])
         trashDir = path.parent / '.trash'
         Folder().remove(vfolder)
@@ -173,12 +166,11 @@ class Version(AbstractVRResource):
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Lists all versions.')
-            .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                        destName='root', paramType='query')
-            .pagingParams(defaultSort='created')
-            .errorResponse(
-            'Access was denied (if current user does not have read access to this tale '
-            'instance)', 403)
+        .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
+                    destName='root', paramType='query')
+        .pagingParams(defaultSort='created')
+        .errorResponse('Access was denied (if current user does not have read access to this tale '
+                       'instance)', 403)
     )
     def list(self, root: dict, limit, offset, sort):
         return super().list(root, limit, offset, sort)
@@ -186,13 +178,12 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Check if a version exists.')
-            .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                        destName='root', paramType='query')
-            .param('name', 'Return the folder with this name or nothing if no such folder exists.',
-                   required=False, dataType='string')
-            .errorResponse(
-            'Access was denied (if current user does not have read access to this tale '
-            'instance)', 403)
+        .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
+                    destName='root', paramType='query')
+        .param('name', 'Return the folder with this name or nothing if no such folder exists.',
+               required=False, dataType='string')
+        .errorResponse('Access was denied (if current user does not have read access to this tale '
+                       'instance)', 403)
     )
     def exists(self, root: dict, name: str):
         return super().exists(root, name)
@@ -201,10 +192,10 @@ class Version(AbstractVRResource):
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Retrieves the latest version.')
-            .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                        destName='root', paramType='query')
-            .errorResponse('Access was denied (if current user does not have read access to this '
-                           'tale instance)', 403)
+        .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
+                    destName='root', paramType='query')
+        .errorResponse('Access was denied (if current user does not have read access to this '
+                       'tale instance)', 403)
     )
     def getLatestVersion(self, root: dict) -> dict:
         return self._getLastVersion(root)
@@ -257,9 +248,7 @@ class Version(AbstractVRResource):
 
     def _create(self, instance: dict, tale: dict, name: str, versionsDir: Path,
                 versionsRoot: dict, force: bool) -> None:
-        ro = True
         if name is None:
-            ro = False
             name = self._generateName()
 
         last = self._getLastVersion(versionsRoot)
@@ -334,7 +323,7 @@ class Version(AbstractVRResource):
             newWorkspace.mkdir()
 
             self._snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
-        except:
+        except:  # noqa: E722
             try:
                 shutil.rmtree(newVersion.absolute().as_posix())
                 Folder().remove(newVersionFolder)
@@ -364,7 +353,7 @@ class Version(AbstractVRResource):
                 newcstr = newc.absolute().as_posix()
                 try:
                     os.link(crtcstr, newcstr)
-                except:
+                except:  # noqa: E722
                     logger.warn('link %s -> %s' % (crtcstr, newcstr))
                     raise
                 shutil.copystat(crtcstr, newcstr)

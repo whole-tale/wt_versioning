@@ -36,6 +36,7 @@ def _createAuxFolder(tale, name, rootProp, creator):
     trashDir.mkdir(exist_ok=True)
     return (folder, rootDir)
 
+
 def addVersionsAndRuns(event: events.Event) -> None:
     tale = event.info
     creator = User().load(tale['creatorId'], force=True)

@@ -4,14 +4,10 @@ from typing import Tuple
 import pathvalidate
 
 from girder import logger
-from girder.api import access
-from girder.api.describe import autoDescribeRoute, Description
-from girder.api.rest import filtermodel
 from girder.api.v1.resource import Resource
 from girder.constants import AccessType
 from girder.exceptions import RestException
 from girder.models.folder import Folder
-from girder.plugins.wholetale.models.instance import Instance
 from girder.plugins.wholetale.models.tale import Tale
 from girder.plugins.wholetale.utils import getOrCreateRootFolder
 from girder.utility.model_importer import ModelImporter
