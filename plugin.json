@@ -2,5 +2,5 @@
     "name": "WholeTale Versioning Plugins",
     "description": "Implements tale versioning and runs",
     "version": "0.0.1",
-    "dependencies": ["wholetale", "wt_data_manager"]
+    "dependencies": ["wholetale", "wt_data_manager", "virtual_resources"]
 }
