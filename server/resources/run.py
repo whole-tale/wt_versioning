@@ -39,7 +39,8 @@ class Run(AbstractVRResource):
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Retrieves the runs root folder for this instance.')
-            .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True)
+            .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True,
+                        paramType='query')
             .errorResponse(
             'Access was denied (if current user does not have write access to this tale '
             'instance)', 403)
@@ -53,7 +54,7 @@ class Run(AbstractVRResource):
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
             .modelParam('rootId', 'The ID of the runs root folder', model=Folder, force=True,
-                        destName='root')
+                        destName='root', paramType='query')
     )
     def clear(self, root: dict) -> None:
         super().clear(root)
@@ -64,7 +65,7 @@ class Run(AbstractVRResource):
         Description('Rename a run associated with a tale instance. Returns the renamed run folder')
             .modelParam('id', 'The ID of run folder', model=Folder, force=True,
                         destName='rfolder')
-            .param('newName', 'The new name', required=True, dataType='string')
+            .param('newName', 'The new name', required=True, dataType='string', paramType='query')
             .errorResponse(
             'Access was denied (if current user does not have write access to this tale '
             'instance)', 403)
@@ -91,10 +92,10 @@ class Run(AbstractVRResource):
         Description('Creates a new empty run associated with a given version and returns the new '
                     'run folder. This does not actually start any computation.')
         .modelParam('versionId', 'A version to create the run from.', model=Folder, force=True,
-                    destName='version')
+                    destName='version', paramType='query')
         .param('name', 'An optional name for the run. If not specified, a name will be '
                        'generated from the current date and time.', required=False,
-               dataType='string')
+               dataType='string', paramType='query')
         .errorResponse('Access was denied (if current user does not have write access to the tale '
                        'instance associated with this version)', 403)
         .errorResponse('Illegal file name', 400)
@@ -149,7 +150,7 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Check if a run exists.')
             .modelParam('rootId', 'The ID of runs root folder.', model=Folder, force=True,
-                        destName='root')
+                        destName='root', paramType='query')
             .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                    required=False, dataType='string')
             .errorResponse(

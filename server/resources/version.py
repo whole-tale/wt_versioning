@@ -36,7 +36,8 @@ class Version(AbstractVRResource):
     @access.user()
     @autoDescribeRoute(
         Description('Retrieves the versions root folder for this instance.')
-            .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True)
+            .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True,
+                        paramType='query')
             .errorResponse(
             'Access was denied (if current user does not have write access to this tale '
             'instance)', 403)
@@ -55,7 +56,7 @@ class Version(AbstractVRResource):
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
             .modelParam('rootId', 'The ID of the versions root folder', model=Folder, force=True,
-                        destName='root')
+                        destName='root', paramType='query')
     )
     def clear(self, root: dict) -> None:
         super().clear(root)
@@ -109,7 +110,7 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Creates a new version of a tale. Returns the new version folder.')
         .modelParam('instanceId', 'A tale instance requesting the creation of a new version.',
-                    model=Instance, force=True, destName='instance')
+                    model=Instance, force=True, destName='instance', paramType='query')
         .param('name', 'An optional name for the version. If not specified, a name will be '
                        'generated from the current date and time.', required=False,
                dataType='string')
@@ -173,7 +174,7 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Lists all versions.')
             .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                        destName='root')
+                        destName='root', paramType='query')
             .pagingParams(defaultSort='created')
             .errorResponse(
             'Access was denied (if current user does not have read access to this tale '
@@ -187,7 +188,7 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Check if a version exists.')
             .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                        destName='root')
+                        destName='root', paramType='query')
             .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                    required=False, dataType='string')
             .errorResponse(
@@ -202,7 +203,7 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Retrieves the latest version.')
             .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                        destName='root')
+                        destName='root', paramType='query')
             .errorResponse('Access was denied (if current user does not have read access to this '
                            'tale instance)', 403)
     )
