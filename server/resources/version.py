@@ -184,7 +184,6 @@ class Version(AbstractVRResource):
         return super().list(root, limit, offset, sort)
 
     @access.user(TokenScope.DATA_READ)
-    @filtermodel('folder')
     @autoDescribeRoute(
         Description('Check if a version exists.')
             .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,

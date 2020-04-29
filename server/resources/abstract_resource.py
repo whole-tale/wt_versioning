@@ -119,4 +119,8 @@ class AbstractVRResource(Resource):
 
     def exists(self, root: dict, name: str):
         self._checkAccess(root)
-        return Folder().findOne({'parentId': root['_id'], 'name': name})
+        obj = Folder().findOne({'parentId': root['_id'], 'name': name})
+        if obj is None:
+            return {'exists': False}
+        else:
+            return {'exists': True, 'obj': Folder().filter(obj, self.getCurrentUser())}

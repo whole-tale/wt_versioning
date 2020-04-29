@@ -146,7 +146,6 @@ class Run(AbstractVRResource):
         return super().list(root, limit, offset, sort)
 
     @access.user(TokenScope.DATA_READ)
-    @filtermodel('folder')
     @autoDescribeRoute(
         Description('Check if a run exists.')
             .modelParam('rootId', 'The ID of runs root folder.', model=Folder, force=True,
