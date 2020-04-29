@@ -29,6 +29,6 @@ class RunStatus:
     CANCELLED = RunState(5, 'CANCELLED')
 
     @classmethod
-    def get(code: int) -> RunState:
+    def get(cls, code: int) -> RunState:
         return RunState.ALL[code]
 
