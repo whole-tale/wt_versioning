@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import pathvalidate
 
@@ -37,14 +37,17 @@ class AbstractVRResource(Resource):
         if not ModelImporter.model(model, model_plugin).hasAccess(instance, user, AccessType.WRITE):
             raise RestException('Access denied', code=403)
 
-    def _getTaleAndRoot(self, instance: dict = None, tale: dict = None) -> Tuple[dict, dict]:
+    def _getTaleAndRoot(self, instance: Optional[dict] = None,
+                        tale: Optional[dict] = None) -> Tuple[dict, dict]:
         if tale is None:
+            if instance is None:
+                raise Exception('must specify either an instance or a tale')
             tale = Tale().findOne({'_id': instance['taleId']})
         global_root = getOrCreateRootFolder(self.rootDirName)
         root = Folder().findOne({'parentId': global_root['_id'], 'name': str(tale['_id'])})
         return (tale, root)
 
-    def _checkNameSanity(self, name: str, parentFolder: dict) -> None:
+    def _checkNameSanity(self, name: Optional[str], parentFolder: dict) -> None:
         if name is None:
             return
         try:

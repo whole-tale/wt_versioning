@@ -2,7 +2,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pymongo
 
@@ -197,7 +197,7 @@ class Version(AbstractVRResource):
         .errorResponse('Access was denied (if current user does not have read access to this '
                        'tale instance)', 403)
     )
-    def getLatestVersion(self, root: dict) -> dict:
+    def getLatestVersion(self, root: dict) -> Optional[dict]:
         return self._getLastVersion(root)
 
     @classmethod
@@ -246,16 +246,16 @@ class Version(AbstractVRResource):
             multi=False)
         return result.matched_count > 0
 
-    def _create(self, instance: dict, tale: dict, name: str, versionsDir: Path,
-                versionsRoot: dict, force: bool) -> None:
+    def _create(self, instance: dict, tale: dict, name: Optional[str], versionsDir: Path,
+                versionsRoot: dict, force: bool) -> dict:
         if name is None:
             name = self._generateName()
 
         last = self._getLastVersion(versionsRoot)
 
         if last is not None:
-            oldVersion = Path(last['fsPath'])
-            oldDataset = last['dataSet']
+            oldVersion = Path(last['fsPath'])  # type: Optional[Path]
+            oldDataset = last['dataSet']  # type: Optional[List[dict]]
         else:
             oldVersion = None
             oldDataset = None
@@ -271,7 +271,7 @@ class Version(AbstractVRResource):
                       newVersionFolder, force)
         return newVersionFolder
 
-    def _getLastVersion(self, versionsFolder: dict) -> dict:
+    def _getLastVersion(self, versionsFolder: dict) -> Optional[dict]:
         # The versions root folder is kept as a pure Girder folder. This is because there is no
         # efficient way to say "give me the latest subdir" on a POSIX filesystem.
         try:
@@ -284,9 +284,9 @@ class Version(AbstractVRResource):
         now = datetime.now()
         return now.strftime(VERSION_NAME_FORMAT)
 
-    def snapshot(self, oldVersionFolder: dict, oldVersion: Path, oldData: List[dict],
-                 crtData: List[dict], crtWorkspace: Path, newVersion: Path, newVersionFolder: dict,
-                 force: bool) -> None:
+    def snapshot(self, oldVersionFolder: Optional[dict], oldVersion: Optional[Path],
+                 oldData: Optional[List[dict]], crtData: List[dict], crtWorkspace: Path,
+                 newVersion: Path, newVersionFolder: dict, force: bool) -> None:
         '''Creates a new version from the current state and an old version. The implementation
         here differs a bit from
         https://docs.google.com/document/d/1b2xZtIYvgVXz7EVeV-C18So_a7QLGg59dPQMxvBcA5o since
@@ -311,6 +311,7 @@ class Version(AbstractVRResource):
         try:
             if not force and self._sameData(oldData, crtData) and \
                     self._sameTree(oldWorkspace, crtWorkspace):
+                assert oldVersionFolder is not None
                 raise RestException('Not modified', 303, str(oldVersionFolder['_id']))
             dataDir = newVersion / 'data'
             dataDir.mkdir()
@@ -331,7 +332,7 @@ class Version(AbstractVRResource):
                 logger.warning('Exception caught while rolling back version ckeckpoint.', ex)
             raise
 
-    def _snapshotRecursive(self, old: Path, crt: Path, new: Path) -> None:
+    def _snapshotRecursive(self, old: Optional[Path], crt: Path, new: Path) -> None:
         for c in crt.iterdir():
             newc = new / c.name
             oldc = None if old is None else old / c.name
@@ -358,7 +359,7 @@ class Version(AbstractVRResource):
                     raise
                 shutil.copystat(crtcstr, newcstr)
 
-    def _sameData(self, old: List[dict], crt: List[dict]):
+    def _sameData(self, old: Optional[List[dict]], crt: List[dict]):
         if old is None:
             return False
         if len(old) != len(crt):
@@ -375,7 +376,7 @@ class Version(AbstractVRResource):
 
         return True
 
-    def _sameTree(self, old: Path, crt: Path) -> bool:
+    def _sameTree(self, old: Optional[Path], crt: Path) -> bool:
         if old is None:
             return False
         for c in crt.iterdir():

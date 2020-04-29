@@ -13,7 +13,7 @@ class PluginSettings:
 
 
 class RunState:
-    ALL = {}
+    ALL = {}  # type: dict
 
     def __init__(self, code: int, name: str):
         self.code = code

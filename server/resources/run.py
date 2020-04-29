@@ -5,7 +5,7 @@ import time as t
 from datetime import datetime
 from pathlib import Path
 from threading import Thread
-from typing import Union
+from typing import Union, Optional
 
 import cherrypy
 
@@ -188,19 +188,21 @@ class Run(AbstractVRResource):
         .errorResponse('Access was denied (if current user does not have read access to '
                        'this run)', 403)
     )
-    def setStatus(self, rfolder: dict, status: Union[int, RunStatus]) -> None:
+    def setStatus(self, rfolder: dict, status: Union[int, RunState]) -> None:
         self._checkAccess(rfolder)
         self._setStatus(rfolder, status)
 
-    def _setStatus(self, rfolder: dict, status: Union[int, RunStatus]) -> None:
+    def _setStatus(self, rfolder: dict, status: Union[int, RunState]) -> None:
         # TODO: add heartbeats (runs must regularly update status, otherwise they are considered
         # failed)
         if isinstance(status, int):
-            status = RunState.ALL[status]
-        rfolder[FIELD_STATUS_CODE] = status.code
+            _status = RunState.ALL[status]
+        else:
+            _status = status
+        rfolder[FIELD_STATUS_CODE] = _status.code
         Folder().save(rfolder)
         runDir = Path(rfolder['fsPath'])
-        self._write_status(runDir, status)
+        self._write_status(runDir, _status)
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
@@ -237,7 +239,7 @@ class Run(AbstractVRResource):
             f.write(data)
         return new
 
-    def _create(self, version: dict, name: str, root: dict, rootDir: Path) -> None:
+    def _create(self, version: dict, name: Optional[str], root: dict, rootDir: Path) -> dict:
         if name is None:
             name = self._generateName()
 
@@ -264,7 +266,7 @@ class Run(AbstractVRResource):
 
         return runFolder
 
-    def _write_status(self, runDir: Path, status: RunStatus):
+    def _write_status(self, runDir: Path, status: RunState):
         with open(runDir / '.status', 'w') as f:
             f.write('%s %s' % (status.code, status.name))
 
