@@ -131,14 +131,14 @@ class Version(AbstractVRResource):
         (tale, root) = self._getTaleAndRoot(instance)
         self._checkNameSanity(name, root)
 
-        if not self._setCriticalSectionFlag(root):
+        if not Version._setCriticalSectionFlag(root):
             raise RestException('Another operation is in progress. Try again later.', 409)
         try:
             rootDir = util.getTaleVersionsDirPath(tale)
             return self._create(instance, tale, name, rootDir, root, force)
         finally:
             # probably need a better way to deal with hard crashes here
-            self._resetCriticalSectionFlag(root)
+            Version._resetCriticalSectionFlag(root)
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
@@ -153,14 +153,14 @@ class Version(AbstractVRResource):
         self._checkAccess(vfolder)
 
         root = Folder().load(vfolder['parentId'], force=True)
-        self._setCriticalSectionFlag(root)
+        Version._setCriticalSectionFlag(root)
         try:
             # make sure we use information protected by the critical section
             vfolder = Folder().load(vfolder['_id'], Force=True)
             if FIELD_REFERENCE_COUNTER in vfolder and vfolder[FIELD_REFERENCE_COUNTER] > 0:
                 raise RestException('Version is in use by a run and cannot be deleted.', 461)
         finally:
-            self._resetCriticalSectionFlag(root)
+            Version._resetCriticalSectionFlag(root)
 
 
         path = Path(vfolder['fsPath'])
@@ -209,13 +209,36 @@ class Version(AbstractVRResource):
     def getLatestVersion(self, root: dict) -> dict:
         return self._getLastVersion(root)
 
-    def _setCriticalSectionFlag(self, root: dict) -> bool:
-        return self._updateCriticalSectionFlag(root, True)
+    @classmethod
+    def _incrementReferenceCount(cls, vfolder):
+        cls._updateReferenceCount(vfolder, 1)
 
-    def _resetCriticalSectionFlag(self, root: dict) -> bool:
-        return self._updateCriticalSectionFlag(root, False)
+    @classmethod
+    def _decrementReferenceCount(cls, vfolder):
+        cls._updateReferenceCount(vfolder, -1)
 
-    def _updateCriticalSectionFlag(self, root: dict, value: bool) -> bool:
+    @classmethod
+    def _updateReferenceCount(cls, vfolder: dict, n: int):
+        root = Folder().load(vfolder['parentId'])
+        cls._setCriticalSectionFlag(root)
+        try:
+            vfolder = Folder().load(vfolder['_id'], Force=True)
+            if FIELD_REFERENCE_COUNTER in vfolder:
+                vfolder[FIELD_REFERENCE_COUNTER] += n
+                Folder().save(vfolder)
+        finally:
+            cls._resetCriticalSectionFlag(root)
+
+    @classmethod
+    def _setCriticalSectionFlag(cls, root: dict) -> bool:
+        return cls._updateCriticalSectionFlag(root, True)
+
+    @classmethod
+    def _resetCriticalSectionFlag(cls, root: dict) -> bool:
+        return cls._updateCriticalSectionFlag(root, False)
+
+    @classmethod
+    def _updateCriticalSectionFlag(cls, root: dict, value: bool) -> bool:
         result = Folder().update(
             query={
                 '_id': root['_id'],

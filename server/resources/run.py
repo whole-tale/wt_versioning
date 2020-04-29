@@ -17,6 +17,7 @@ from girder.constants import TokenScope
 from girder.models.folder import Folder
 from girder.plugins.wholetale.models.instance import Instance
 from girder.plugins.wholetale.models.tale import Tale
+from .version import Version
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants, RunStatus, RunState
 from ..lib import util
@@ -111,7 +112,10 @@ class Run(AbstractVRResource):
 
         rootDir = util.getTaleRunsDirPath(tale)
 
-        return self._create(version, name, root, rootDir)
+        run = self._create(version, name, root, rootDir)
+        Version._incrementReferenceCount(version)
+
+        return run
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
@@ -127,9 +131,14 @@ class Run(AbstractVRResource):
 
         path = Path(rfolder['fsPath'])
         trashDir = path.parent / '.trash'
+
+        version = Folder().load(rfolder['runVersionId'], force=True)
+
         Folder().remove(rfolder)
 
         shutil.move(path.as_posix(), trashDir)
+
+        Version._decrementReferenceCount(version)
 
     @access.user(TokenScope.DATA_READ)
     @filtermodel('folder')
