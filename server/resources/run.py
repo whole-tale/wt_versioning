@@ -15,7 +15,6 @@ from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
 from girder.constants import TokenScope
 from girder.models.folder import Folder
-from girder.plugins.wholetale.models.instance import Instance
 from girder.plugins.wholetale.models.tale import Tale
 from .version import Version
 from .abstract_resource import AbstractVRResource
@@ -38,18 +37,18 @@ class Run(AbstractVRResource):
     @access.user()
     @filtermodel('folder')
     @autoDescribeRoute(
-        Description('Retrieves the runs root folder for this instance.')
-        .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True,
-                    paramType='query')
+        Description('Retrieves the runs root folder for this tale.')
+        .modelParam('taleId', 'The ID of a tale', model=Tale, force=True,
+                    paramType='query', destName='tale')
         .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
     )
-    def getRoot(self, instance: dict) -> dict:
-        return super().getRoot(instance)
+    def getRoot(self, tale: dict) -> dict:
+        return super().getRoot(tale)
 
     @access.admin(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
-        Description('Clears all runs from an instance, but does not delete the respective '
+        Description('Clears all runs from a tale, but does not delete the respective '
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
         .modelParam('rootId', 'The ID of the runs root folder', model=Folder, force=True,
@@ -61,12 +60,12 @@ class Run(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
-        Description('Rename a run associated with a tale instance. Returns the renamed run folder')
+        Description('Rename a run associated with a tale. Returns the renamed run folder')
         .modelParam('id', 'The ID of run folder', model=Folder, force=True,
                     destName='rfolder')
         .param('newName', 'The new name', required=True, dataType='string', paramType='query')
         .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
         .errorResponse('Illegal file name', 400)
     )
     def rename(self, rfolder: dict, newName: str) -> dict:
@@ -94,7 +93,7 @@ class Run(AbstractVRResource):
                        'generated from the current date and time.', required=False,
                dataType='string', paramType='query')
         .errorResponse('Access was denied (if current user does not have write access to the tale '
-                       'instance associated with this version)', 403)
+                       'associated with this version)', 403)
         .errorResponse('Illegal file name', 400)
     )
     def create(self, version: dict, name: str = None) -> dict:
@@ -102,7 +101,7 @@ class Run(AbstractVRResource):
         taleId = versionsRoot['taleId']
         tale = Tale().load(taleId, force=True)
 
-        (tale, root) = self._getTaleAndRoot(tale=tale)
+        root = self._getRootFromTale(tale)
         self._checkAccess(root)
         self._checkNameSanity(name, root)
 
@@ -119,7 +118,7 @@ class Run(AbstractVRResource):
         .modelParam('id', 'The ID of run folder', model=Folder, force=True,
                     destName='rfolder')
         .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
     )
     def delete(self, rfolder: dict) -> None:
         self._checkAccess(rfolder)
@@ -143,7 +142,7 @@ class Run(AbstractVRResource):
                     destName='root')
         .pagingParams(defaultSort='created')
         .errorResponse('Access was denied (if current user does not have read access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
     )
     def list(self, root: dict, limit, offset, sort):
         return super().list(root, limit, offset, sort)
@@ -156,7 +155,7 @@ class Run(AbstractVRResource):
         .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                required=False, dataType='string')
         .errorResponse('Access was denied (if current user does not have read access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
     )
     def exists(self, root: dict, name: str):
         return super().exists(root, name)

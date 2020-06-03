@@ -8,7 +8,6 @@ from girder.api.v1.resource import Resource
 from girder.constants import AccessType
 from girder.exceptions import RestException
 from girder.models.folder import Folder
-from girder.plugins.wholetale.models.tale import Tale
 from girder.plugins.wholetale.utils import getOrCreateRootFolder
 from girder.utility.model_importer import ModelImporter
 
@@ -31,21 +30,16 @@ class AbstractVRResource(Resource):
         self.route('GET', (':id', 'rename'), self.rename)
         self.route('DELETE', (':id',), self.delete)
 
-    def _checkAccess(self, instance: dict, model='folder', model_plugin=None):
+    def _checkAccess(self, tale: dict, model='folder', model_plugin=None):
         user = self.getCurrentUser()
 
-        if not ModelImporter.model(model, model_plugin).hasAccess(instance, user, AccessType.WRITE):
+        if not ModelImporter.model(model, model_plugin).hasAccess(tale, user, AccessType.WRITE):
             raise RestException('Access denied', code=403)
 
-    def _getTaleAndRoot(self, instance: Optional[dict] = None,
-                        tale: Optional[dict] = None) -> Tuple[dict, dict]:
-        if tale is None:
-            if instance is None:
-                raise Exception('must specify either an instance or a tale')
-            tale = Tale().findOne({'_id': instance['taleId']})
+    def _getRootFromTale(self, tale: dict) -> dict:
         global_root = getOrCreateRootFolder(self.rootDirName)
         root = Folder().findOne({'parentId': global_root['_id'], 'name': str(tale['_id'])})
-        return (tale, root)
+        return root
 
     def _checkNameSanity(self, name: Optional[str], parentFolder: dict) -> None:
         if name is None:
@@ -76,10 +70,8 @@ class AbstractVRResource(Resource):
         Folder().updateFolder(rootFolder)
         return (folder, dir)
 
-    def getRoot(self, instance: dict) -> dict:
-        (tale, root) = self._getTaleAndRoot(instance)
-
-        return root
+    def getRoot(self, tale: dict) -> dict:
+        return self._getRootFromTale(tale)
 
     def clear(self, root: dict) -> None:
         self._checkAccess(root)

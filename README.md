@@ -91,12 +91,12 @@ Creates a new version in the version chain for this tale and returns the resulti
 
 ##### Parameters:
 ```python
-instanceId: string
+taleId: string
 [name: string]
 [force: boolean = false]
 ```
 
-An `instanceId` must be specified. While versions are associated with tales, they are also created with respect to an active instance. A good question is what should happen if more than one active instance of the same tale exist. An optional `name` can be specified, wich must be a valid filename.
+A `taleId` must be specified. An optional `name` can be specified, wich must be a valid filename.
 
 If a `name` is not specified, the current date and time are used formatted according to `%c` in the 1989 C standard (in en_US, this would be, for example, *Mon Jan 10 22:01:05 2019*)
 
@@ -106,7 +106,7 @@ Normally, if no files belonging to the tale workspace<sup>*</sup> have changed s
 
 ##### Errors:
 
-`403 Access Denied` - returned when the calling user does not have write access to the tale instance.
+`403 Access Denied` - returned when the calling user does not have write access to the tale.
 
 `409 Try Again Later` - another version is being created and concurrent version creation is not supported.
 
@@ -120,7 +120,7 @@ curl -X POST\
     --header 'Girder-Token: Z8Kaa0rIY98FMxlipOOCnsdBYEG290BhkPQk7JuxA9oen86DkEw5fIhp6hxtWL2A'\
     --header 'Content-Length: 0' --header 'Content-Type: application/json'\
     --header 'Accept: application/json'\
-    'http://localhost:8080/api/v1/version?instanceId=5e5d855ec6efca74a8cacf26&force=false'
+    'http://localhost:8080/api/v1/version?taleId=5e5d8541c6efca74a8cacf1f&force=false'
 ```
 
 ##### Example response:
@@ -346,22 +346,22 @@ An empty response is generated if the operation is successful.
 GET /version/getRoot
 ```
 
-Returns the versions root folder for an instance. The versions root folder is the parent folder to all the versions.
+Returns the versions root folder for an tale. The versions root folder is the parent folder to all the versions.
 
 
 ##### Parameters:
 ```python
-instanceId: string
+taleId: string
 ```
 
-The `instanceId` parameter points to the instance of the tale whose versions root folder will be returned.
+The `taleId` parameter points to the tale whose versions root folder will be returned.
 
 ##### Example:
 ```
 curl -X GET\
     --header 'Girder-Token: Z8Kaa0rIY98FMxlipOOCnsdBYEG290BhkPQk7JuxA9oen86DkEw5fIhp6hxtWL2A'\
     --header 'Accept: application/json'\
-    'http://localhost:8080/api/v1/version/getRoot?instanceId=5e5d855ec6efca74a8cacf26'
+    'http://localhost:8080/api/v1/version/getRoot?taleId=5e5d855ec6efca74a8cacf26'
 ```
 
 ##### Example Response:
@@ -374,15 +374,15 @@ curl -X GET\
     "created": "2020-03-02T22:14:25.745000+00:00",
     "creatorId": null,
     "description": "",
-    "lowerName": "5e5d8541c6efca74a8cacf1f",
-    "meta": {"taleId": "5e5d8541c6efca74a8cacf1f"},
-    "name": "5e5d8541c6efca74a8cacf1f",
+    "lowerName": "5e5d855ec6efca74a8cacf26",
+    "meta": {"taleId": "5e5d855ec6efca74a8cacf26"},
+    "name": "5e5d855ec6efca74a8cacf26",
     "parentCollection": "folder",
     "parentId": "5e4b8a343b2f6c31462128ab",
     "public": true,
     "seq": 3,
     "size": 0,
-    "taleId": "5e5d8541c6efca74a8cacf1f",
+    "taleId": "5e5d855ec6efca74a8cacf26",
     "updated": "2020-04-23T00:10:38.830000+00:00",
     "versionsCriticalSectionFlag": false
 }
@@ -625,7 +625,7 @@ The optional `name` parameter allows a specfic name to be given to this run. Abs
 
 ##### Errors:
 
-`403 Access Denied` - returned when the calling user does not have write access to the tale instance.
+`403 Access Denied` - returned when the calling user does not have write access to the tale.
 
 `400 Illegal File Name` - a `name` was specified, but is not a legal file name.
 
@@ -925,22 +925,22 @@ There is an empty response body if the operation was successful.
 GET /run/getRoot
 ```
 
-Returns the runs root folder for an instance. The runs root folder is the parent folder to all the runs.
+Returns the runs root folder for a tale. The runs root folder is the parent folder to all the runs.
 
 
 ##### Parameters:
 ```python
-instanceId: string
+taleId: string
 ```
 
-The `instanceId` parameter points to the instance of the tale whose runs root folder will be returned.
+The `taleId` parameter points to the tale whose runs root folder will be returned.
 
 ##### Example:
 ```
 curl -X GET\
     --header 'Girder-Token: Z8Kaa0rIY98FMxlipOOCnsdBYEG290BhkPQk7JuxA9oen86DkEw5fIhp6hxtWL2A'\
     --header 'Accept: application/json'\
-    'http://localhost:8080/api/v1/run/getRoot?instanceId=5e5d855ec6efca74a8cacf26'
+    'http://localhost:8080/api/v1/run/getRoot?taleId=5e5d855ec6efca74a8cacf26'
 ```
 
 ##### Example Response:
@@ -954,8 +954,8 @@ curl -X GET\
     "created": "2020-03-02T22:14:25.749000+00:00",
     "creatorId": null,
     "description": "",
-    "meta": {"taleId": "5e5d8541c6efca74a8cacf1f"},
-    "name": "5e5d8541c6efca74a8cacf1f",
+    "meta": {"taleId": "5e5d855ec6efca74a8cacf26"},
+    "name": "5e5d855ec6efca74a8cacf26",
     "parentCollection": "folder",
     "parentId": "5e4b8ad832b7c36c2ec8f783",
     "public": true,
@@ -1122,4 +1122,4 @@ There is no response body when the operation is successful.
 
 ## FUSE Filesystems {#fuse-fss}
 
-The FUSE filesystems are implementations of filesystems that allow a tale instance to access its own versions and runs as POSIX filesystem hierarchies. These are implemented in the [GirderFS WholeTale Plugin](https://github.com/whole-tale/girderfs). 
+The FUSE filesystems are implementations of filesystems that allow a tale to access its own versions and runs as POSIX filesystem hierarchies. These are implemented in the [GirderFS WholeTale Plugin](https://github.com/whole-tale/girderfs). 
