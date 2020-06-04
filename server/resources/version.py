@@ -262,13 +262,18 @@ class Version(AbstractVRResource):
 
         (newVersionFolder, newVersionDir) = self._createSubdir(versionsDir, versionsRoot, name)
 
-        dataSet = tale['dataSet']
+        try:
+            dataSet = tale['dataSet']
 
-        taleWorkspaceDir = util.getTaleWorkspaceDirPath(tale)
+            taleWorkspaceDir = util.getTaleWorkspaceDirPath(tale)
 
-        self.snapshot(last, oldVersion, oldDataset, dataSet, taleWorkspaceDir, newVersionDir,
-                      newVersionFolder, force)
-        return newVersionFolder
+            self.snapshot(last, oldVersion, oldDataset, dataSet, taleWorkspaceDir, newVersionDir,
+                          newVersionFolder, force)
+            return newVersionFolder
+        except Exception:
+            shutil.rmtree(newVersionDir)
+            Folder().remove(newVersionFolder)
+            raise
 
     def _getLastVersion(self, versionsFolder: dict) -> Optional[dict]:
         # The versions root folder is kept as a pure Girder folder. This is because there is no
