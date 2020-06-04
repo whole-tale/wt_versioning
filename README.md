@@ -57,6 +57,8 @@ It is perhaps worth mentioning that versions and runs do not have special Girder
 
 This plugin depends on the [Virtual Resources](https://github.com/whole-tale/virtual_resources) plugin, which uses a POSIX directory structure as an underlying store for Girder items and folders, bypassing the database. The precise scheme used by the versioning plugin is that of a root folder (one for a tale's versions and one for its runs), which is a standard Girder folder. Its sub-folders, the actual versions and runs, are then each mapped to a directory on disk. That is, versions and runs root folders are database backed. This is done because certain operations, such as retrieving the last version or retrieving a subset of versions, can be done much more efficiently using database queries than filesystem queries.
 
+On the topic of efficiency, snapshotting involves creating hard links to files in the workspace (see design docs above for details). This requires that the versions and runs roots be placed on the same filesystem as the tale workspaces.
+
 There are two main components to the versioning plugin: the [backend API](#backend-api) and the [FUSE filesystems](#fuse-fss).
 
 ## The backend API {#backend-api}
