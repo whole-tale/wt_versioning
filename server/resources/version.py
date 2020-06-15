@@ -13,8 +13,8 @@ from girder.api.rest import filtermodel
 from girder.constants import TokenScope
 from girder.exceptions import RestException
 from girder.models.folder import Folder
-from girder.plugins.wholetale.models.instance import Instance
 from girder.plugins.wt_data_manager.models.session import Session
+from girder.plugins.wholetale.models.tale import Tale
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants
 from ..lib import util
@@ -33,23 +33,23 @@ class Version(AbstractVRResource):
 
     @access.user()
     @autoDescribeRoute(
-        Description('Retrieves the versions root folder for this instance.')
-        .modelParam('instanceId', 'The ID of a tale instance', model=Instance, force=True,
-                    paramType='query')
-        .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale instance)', 403)
+        Description('Retrieves the versions root folder for this tale.')
+        .modelParam('taleId', 'The ID of a tale', model=Tale, force=True,
+                    paramType='query', destName='tale')
+        .errorResponse('Access was denied (if current user does not have read access to this '
+                       'tale)', 403)
     )
-    def getRoot(self, instance: dict) -> dict:
+    def getRoot(self, tale: dict) -> dict:
         # So we're overriding this because the description above has 'version' in it.
         # This is also where we see the trouble with over-reliance on decorators: doesn't work
         #   too well with inheritance.
         # On the other hand, this could be solved by a modified decorator and some voodoo, but
         # that's probably less maintainable than just copying and pasting descriptions
-        return super().getRoot(instance)
+        return super().getRoot(tale)
 
     @access.admin(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
-        Description('Clears all versions from an instance, but does not delete the respective '
+        Description('Clears all versions from a tale, but does not delete the respective '
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
         .modelParam('rootId', 'The ID of the versions root folder', model=Folder, force=True,
@@ -61,13 +61,13 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
-        Description('Rename a version associated with a tale instance. Returns the renamed version '
+        Description('Rename a version associated with a tale. Returns the renamed version '
                     'folder')
         .modelParam('id', 'The ID of version folder', model=Folder, force=True,
                     destName='vfolder')
         .param('newName', 'The new name', required=True, dataType='string')
         .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
         .errorResponse('Illegal file name', 400)
     )
     def rename(self, vfolder: dict, newName: str) -> dict:
@@ -103,16 +103,16 @@ class Version(AbstractVRResource):
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Creates a new version of a tale. Returns the new version folder.')
-        .modelParam('instanceId', 'A tale instance requesting the creation of a new version.',
-                    model=Instance, force=True, destName='instance', paramType='query')
+        .modelParam('taleId', 'A tale requesting the creation of a new version.',
+                    model=Tale, force=True, destName='tale', paramType='query')
         .param('name', 'An optional name for the version. If not specified, a name will be '
                        'generated from the current date and time.', required=False,
                dataType='string')
         .param('force', 'Force creation of a version even if no files were modified in the '
                         'workspace since the last version was created.', required=False,
                dataType='boolean', default=False)
-        .errorResponse('Access was denied (if current user does not have write access to this tale '
-                       'instance)', 403)
+        .errorResponse('Access was denied (if current user does not have write access to this tale)',
+                       403)
         .errorResponse('Another version is being created. Try again later.', 409)
         .errorResponse('Illegal file name', 400)
         .errorResponse('See other (if tale workspace has not been changed since the last '
@@ -120,16 +120,16 @@ class Version(AbstractVRResource):
                        'is a JSON object. This object will have an "extra" attribute containing'
                        'the id of the version that represents this last checkpoint.', 303)
     )
-    def create(self, instance: dict, name: str = None, force: bool = False) -> dict:
-        self._checkAccess(instance, model='instance', model_plugin='wholetale')
-        (tale, root) = self._getTaleAndRoot(instance)
+    def create(self, tale: dict, name: str = None, force: bool = False) -> dict:
+        self._checkAccess(tale, model='tale', model_plugin='wholetale')
+        root = self._getRootFromTale(tale)
         self._checkNameSanity(name, root)
 
         if not Version._setCriticalSectionFlag(root):
             raise RestException('Another operation is in progress. Try again later.', 409)
         try:
             rootDir = util.getTaleVersionsDirPath(tale)
-            return self._create(instance, tale, name, rootDir, root, force)
+            return self._create(tale, name, rootDir, root, force)
         finally:
             # probably need a better way to deal with hard crashes here
             Version._resetCriticalSectionFlag(root)
@@ -140,7 +140,7 @@ class Version(AbstractVRResource):
         .modelParam('id', 'The ID of version folder', model=Folder, force=True,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale instance)', 403)
+                       'tale)', 403)
         .errorResponse('Version is in use by a run and cannot be deleted.', 461)
     )
     def delete(self, vfolder: dict) -> None:
@@ -169,8 +169,8 @@ class Version(AbstractVRResource):
         .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
                     destName='root', paramType='query')
         .pagingParams(defaultSort='created')
-        .errorResponse('Access was denied (if current user does not have read access to this tale '
-                       'instance)', 403)
+        .errorResponse('Access was denied (if current user does not have read access to this tale)',
+                       403)
     )
     def list(self, root: dict, limit, offset, sort):
         return super().list(root, limit, offset, sort)
@@ -182,8 +182,8 @@ class Version(AbstractVRResource):
                     destName='root', paramType='query')
         .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                required=False, dataType='string')
-        .errorResponse('Access was denied (if current user does not have read access to this tale '
-                       'instance)', 403)
+        .errorResponse('Access was denied (if current user does not have read access to this tale)',
+                       403)
     )
     def exists(self, root: dict, name: str):
         return super().exists(root, name)
@@ -194,8 +194,8 @@ class Version(AbstractVRResource):
         Description('Retrieves the latest version.')
         .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
                     destName='root', paramType='query')
-        .errorResponse('Access was denied (if current user does not have read access to this '
-                       'tale instance)', 403)
+        .errorResponse('Access was denied (if current user does not have read access to this tale)',
+                       403)
     )
     def getLatestVersion(self, root: dict) -> Optional[dict]:
         return self._getLastVersion(root)
@@ -246,7 +246,7 @@ class Version(AbstractVRResource):
             multi=False)
         return result.matched_count > 0
 
-    def _create(self, instance: dict, tale: dict, name: Optional[str], versionsDir: Path,
+    def _create(self, tale: dict, name: Optional[str], versionsDir: Path,
                 versionsRoot: dict, force: bool) -> dict:
         if name is None:
             name = self._generateName()
@@ -262,8 +262,7 @@ class Version(AbstractVRResource):
 
         (newVersionFolder, newVersionDir) = self._createSubdir(versionsDir, versionsRoot, name)
 
-        session = Session().findOne({'_id': instance['sessionId']})
-        dataSet = session['dataSet']
+        dataSet = tale['dataSet']
 
         taleWorkspaceDir = util.getTaleWorkspaceDirPath(tale)
 
