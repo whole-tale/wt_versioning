@@ -65,13 +65,13 @@ class Version(AbstractVRResource):
                     'folder')
         .modelParam('id', 'The ID of version folder', model=Folder, force=True,
                     destName='vfolder')
-        .param('newName', 'The new name', required=True, dataType='string')
+        .param('name', 'The new name', required=True, dataType='string')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Illegal file name', 400)
     )
-    def rename(self, vfolder: dict, newName: str) -> dict:
-        return super().rename(vfolder, newName)
+    def rename(self, vfolder: dict, name: str) -> dict:
+        return super().rename(vfolder, name)
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
