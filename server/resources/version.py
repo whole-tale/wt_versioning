@@ -271,8 +271,11 @@ class Version(AbstractVRResource):
                           newVersionFolder, force)
             return newVersionFolder
         except Exception:
-            shutil.rmtree(newVersionDir)
-            Folder().remove(newVersionFolder)
+            try:
+                shutil.rmtree(newVersionDir)
+                Folder().remove(newVersionFolder)
+            except Exception as ex:
+                logger.warning('Exception caught while rolling back version ckeckpoint.', ex)
             raise
 
     def _getLastVersion(self, versionsFolder: dict) -> Optional[dict]:
@@ -312,29 +315,22 @@ class Version(AbstractVRResource):
         '''
 
         oldWorkspace = None if oldVersion is None else oldVersion / 'workspace'
-        try:
-            if not force and self._sameData(oldData, crtData) and \
-                    self._sameTree(oldWorkspace, crtWorkspace):
-                assert oldVersionFolder is not None
-                raise RestException('Not modified', 303, str(oldVersionFolder['_id']))
-            dataDir = newVersion / 'data'
-            dataDir.mkdir()
 
-            # TODO: may want to have a dataSet model and avoid all the duplication
-            newVersionFolder['dataSet'] = crtData.copy()
-            Folder().save(newVersionFolder, False)
+        if not force and self._sameData(oldData, crtData) and \
+                self._sameTree(oldWorkspace, crtWorkspace):
+            assert oldVersionFolder is not None
+            raise RestException('Not modified', 303, str(oldVersionFolder['_id']))
+        dataDir = newVersion / 'data'
+        dataDir.mkdir()
 
-            newWorkspace = newVersion / 'workspace'
-            newWorkspace.mkdir()
+        # TODO: may want to have a dataSet model and avoid all the duplication
+        newVersionFolder['dataSet'] = crtData.copy()
+        Folder().save(newVersionFolder, False)
 
-            self._snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
-        except:  # noqa: E722
-            try:
-                shutil.rmtree(newVersion.absolute().as_posix())
-                Folder().remove(newVersionFolder)
-            except Exception as ex:
-                logger.warning('Exception caught while rolling back version ckeckpoint.', ex)
-            raise
+        newWorkspace = newVersion / 'workspace'
+        newWorkspace.mkdir()
+
+        self._snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
 
     def _snapshotRecursive(self, old: Optional[Path], crt: Path, new: Path) -> None:
         for c in crt.iterdir():
