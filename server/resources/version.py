@@ -150,7 +150,7 @@ class Version(AbstractVRResource):
         Version._setCriticalSectionFlag(root)
         try:
             # make sure we use information protected by the critical section
-            vfolder = Folder().load(vfolder['_id'], Force=True)
+            vfolder = Folder().load(vfolder['_id'], force=True)
             if FIELD_REFERENCE_COUNTER in vfolder and vfolder[FIELD_REFERENCE_COUNTER] > 0:
                 raise RestException('Version is in use by a run and cannot be deleted.', 461)
         finally:
@@ -213,7 +213,7 @@ class Version(AbstractVRResource):
         root = Folder().load(vfolder['parentId'])
         cls._setCriticalSectionFlag(root)
         try:
-            vfolder = Folder().load(vfolder['_id'], Force=True)
+            vfolder = Folder().load(vfolder['_id'], force=True)
             if FIELD_REFERENCE_COUNTER in vfolder:
                 vfolder[FIELD_REFERENCE_COUNTER] += n
                 Folder().save(vfolder)
