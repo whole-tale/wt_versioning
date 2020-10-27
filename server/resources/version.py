@@ -69,6 +69,7 @@ class Version(AbstractVRResource):
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Illegal file name', 400)
+        .errorResponse('Name already exists', 409)
     )
     def rename(self, vfolder: dict, newName: str) -> dict:
         return super().rename(vfolder, newName)
