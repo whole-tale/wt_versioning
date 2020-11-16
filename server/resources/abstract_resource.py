@@ -47,10 +47,10 @@ class AbstractVRResource(Resource):
         try:
             pathvalidate.validate_filename(name, platform='Linux')
         except pathvalidate.ValidationError:
-            raise ValueError('Invalid file name: ' + name, 400)
+            raise RestException('Invalid file name: ' + name, code=400)
         try:
             Folder().find({'parentId': parentFolder['_id'], 'name': name}, limit=1).next()
-            raise ValueError('Name already exists: ' + name, 400)
+            raise RestException('Name already exists: ' + name, code=409)
         except StopIteration:
             pass
 
