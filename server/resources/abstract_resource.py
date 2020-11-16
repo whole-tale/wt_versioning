@@ -17,17 +17,17 @@ class AbstractVRResource(Resource):
         Resource.__init__(self)
         self.resourceName = resourceName
         self.rootDirName = rootDirName
-        self.route('GET', ('getRoot',), self.getRoot)
+        self.route('GET', ('root',), self.getRoot)
         self.route('GET', ('clear',), self.clear)
         self.route('POST', (), self.create)
-        self.route('GET', ('list',), self.list)
+        self.route('GET', (), self.list)
         self.route('GET', ('exists',), self.exists)
         # Resource has its own handler here and whoever designed girder figured that if somebody
         # says route() in a subclass, that's totally OK to ignore and use the superclass stuff
         # instead.
         self.removeRoute('GET', (':id',))
         self.route('GET', (':id',), self.load)
-        self.route('GET', (':id', 'rename'), self.rename)
+        self.route('PUT', (':id',), self.rename)
         self.route('DELETE', (':id',), self.delete)
 
     def _checkAccess(self, tale: dict, model='folder', model_plugin=None):
