@@ -239,7 +239,7 @@ class Run(AbstractVRResource):
         return new
 
     def _create(self, version: dict, name: Optional[str], root: dict, rootDir: Path) -> dict:
-        if name is None:
+        if not name:
             name = self._generateName()
 
         (runFolder, runDir) = self._createSubdir(rootDir, root, name)

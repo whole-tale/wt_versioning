@@ -42,7 +42,7 @@ class AbstractVRResource(Resource):
         return root
 
     def _checkNameSanity(self, name: Optional[str], parentFolder: dict) -> None:
-        if name is None:
+        if not name:
             return
         try:
             pathvalidate.validate_filename(name, platform='Linux')
@@ -89,6 +89,8 @@ class AbstractVRResource(Resource):
         return 'Deleted %s versions' % n
 
     def rename(self, vrfolder: dict, newName: str) -> dict:
+        if not newName:
+            raise RestException('New name cannot be empty.', code=400)
         self._checkAccess(vrfolder)
 
         root = Folder().load(vrfolder['parentId'], force=True)

@@ -249,7 +249,7 @@ class Version(AbstractVRResource):
 
     def _create(self, tale: dict, name: Optional[str], versionsDir: Path,
                 versionsRoot: dict, force: bool) -> dict:
-        if name is None:
+        if not name:
             name = self._generateName()
 
         last = self._getLastVersion(versionsRoot)
