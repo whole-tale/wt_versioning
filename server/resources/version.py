@@ -48,13 +48,14 @@ class Version(AbstractVRResource):
                     'folder')
         .modelParam('id', 'The ID of version', model=Folder, force=True,
                     destName='vfolder')
-        .param('newName', 'The new name', required=True, dataType='string')
+        .param('name', 'The new name', required=True, dataType='string')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Illegal file name', 400)
+        .errorResponse('Name already exists', 409)
     )
-    def rename(self, vfolder: dict, newName: str) -> dict:
-        return super().rename(vfolder, newName)
+    def rename(self, vfolder: dict, name: str) -> dict:
+        return super().rename(vfolder, name)
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
@@ -133,7 +134,7 @@ class Version(AbstractVRResource):
         Version._setCriticalSectionFlag(root)
         try:
             # make sure we use information protected by the critical section
-            vfolder = Folder().load(vfolder['_id'], Force=True)
+            vfolder = Folder().load(vfolder['_id'], force=True)
             if FIELD_REFERENCE_COUNTER in vfolder and vfolder[FIELD_REFERENCE_COUNTER] > 0:
                 raise RestException('Version is in use by a run and cannot be deleted.', 461)
         finally:
@@ -184,7 +185,7 @@ class Version(AbstractVRResource):
         root = Folder().load(vfolder['parentId'])
         cls._setCriticalSectionFlag(root)
         try:
-            vfolder = Folder().load(vfolder['_id'], Force=True)
+            vfolder = Folder().load(vfolder['_id'], force=True)
             if FIELD_REFERENCE_COUNTER in vfolder:
                 vfolder[FIELD_REFERENCE_COUNTER] += n
                 Folder().save(vfolder)
@@ -219,7 +220,7 @@ class Version(AbstractVRResource):
 
     def _create(self, tale: dict, name: Optional[str], versionsDir: Path,
                 versionsRoot: dict, force: bool) -> dict:
-        if name is None:
+        if not name:
             name = self._generateName()
 
         last = self._getLastVersion(versionsRoot)

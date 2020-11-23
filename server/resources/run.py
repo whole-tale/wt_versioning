@@ -63,13 +63,13 @@ class Run(AbstractVRResource):
         Description('Rename a run associated with a tale. Returns the renamed run folder')
         .modelParam('id', 'The ID of a run', model=Folder, force=True,
                     destName='rfolder')
-        .param('newName', 'The new name', required=True, dataType='string', paramType='query')
+        .param('name', 'The new name', required=True, dataType='string', paramType='query')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Illegal file name', 400)
     )
-    def rename(self, rfolder: dict, newName: str) -> dict:
-        return super().rename(rfolder, newName)
+    def rename(self, rfolder: dict, name: str) -> dict:
+        return super().rename(rfolder, name)
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
@@ -239,7 +239,7 @@ class Run(AbstractVRResource):
         return new
 
     def _create(self, version: dict, name: Optional[str], root: dict, rootDir: Path) -> dict:
-        if name is None:
+        if not name:
             name = self._generateName()
 
         (runFolder, runDir) = self._createSubdir(rootDir, root, name)
