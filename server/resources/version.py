@@ -73,6 +73,7 @@ class Version(AbstractVRResource):
         return dataSet
 
     @access.user(TokenScope.DATA_READ)
+    @filtermodel("folder")
     @autoDescribeRoute(
         Description('Returns a version.')
         .modelParam('id', 'The ID of a version', model=Folder, force=True,
