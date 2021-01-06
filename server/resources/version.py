@@ -29,41 +29,24 @@ class Version(AbstractVRResource):
     def __init__(self):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
-        self.route('GET', ('latest',), self.getLatestVersion)
-
-    @access.user()
-    @autoDescribeRoute(
-        Description('Retrieves the versions root folder for this tale.')
-        .modelParam('taleId', 'The ID of a tale', model=Tale, force=True,
-                    paramType='query', destName='tale')
-        .errorResponse('Access was denied (if current user does not have read access to this '
-                       'tale)', 403)
-    )
-    def getRoot(self, tale: dict) -> dict:
-        # So we're overriding this because the description above has 'version' in it.
-        # This is also where we see the trouble with over-reliance on decorators: doesn't work
-        #   too well with inheritance.
-        # On the other hand, this could be solved by a modified decorator and some voodoo, but
-        # that's probably less maintainable than just copying and pasting descriptions
-        return super().getRoot(tale)
 
     @access.admin(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Clears all versions from a tale, but does not delete the respective '
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
-        .modelParam('rootId', 'The ID of the versions root folder', model=Folder, force=True,
-                    destName='root', paramType='query')
+        .modelParam('taleId', 'The ID of the tale for which the versions should be cleared', model=Tale,
+               force=True, destName='tale', paramType='query')
     )
-    def clear(self, root: dict) -> None:
-        super().clear(root)
+    def clear(self, tale: dict) -> None:
+        super().clear(tale)
 
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
-        Description('Rename a version associated with a tale. Returns the renamed version '
+        Description('Rename a version. Returns the renamed version '
                     'folder')
-        .modelParam('id', 'The ID of version folder', model=Folder, force=True,
+        .modelParam('id', 'The ID of version', model=Folder, force=True,
                     destName='vfolder')
         .param('name', 'The new name', required=True, dataType='string')
         .errorResponse('Access was denied (if current user does not have write access to this '
@@ -76,9 +59,9 @@ class Version(AbstractVRResource):
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
-        Description('Returns the dataset associated with a version folder, but with some additional'
+        Description('Returns the dataset associated with a version, but with some additional '
                     'entries such as the type of object (folder/item) and the object dictionaries.')
-        .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
+        .modelParam('id', 'The ID of a version', model=Folder, force=True,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have read access to the '
                        'respective version folder.', 403)
@@ -90,9 +73,10 @@ class Version(AbstractVRResource):
         return dataSet
 
     @access.user(TokenScope.DATA_READ)
+    @filtermodel("folder")
     @autoDescribeRoute(
-        Description('Returns a version folder.')
-        .modelParam('id', 'The ID of a version folder', model=Folder, force=True,
+        Description('Returns a version.')
+        .modelParam('id', 'The ID of a version', model=Folder, force=True,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have read access to the '
                        'respective version folder.', 403)
@@ -166,40 +150,28 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @filtermodel('folder')
     @autoDescribeRoute(
-        Description('Lists all versions.')
-        .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                    destName='root', paramType='query')
+        Description('Lists versions.')
+        .modelParam('taleId', 'The ID of a tale for which versions are to be listed.',
+                    model=Tale, plugin='wholetale', force=True, destName='tale', paramType='query')
         .pagingParams(defaultSort='created')
         .errorResponse('Access was denied (if current user does not have read access to this tale)',
                        403)
     )
-    def list(self, root: dict, limit, offset, sort):
-        return super().list(root, limit, offset, sort)
+    def list(self, tale: dict, limit, offset, sort):
+        return super().list(tale, limit, offset, sort)
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
-        Description('Check if a version exists.')
-        .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                    destName='root', paramType='query')
+        Description('Check if a version with the given name exists.')
+        .modelParam('taleId', 'The ID of versions root folder.', model=Tale, force=True,
+                    destName='tale', paramType='query')
         .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                required=False, dataType='string')
         .errorResponse('Access was denied (if current user does not have read access to this tale)',
                        403)
     )
-    def exists(self, root: dict, name: str):
-        return super().exists(root, name)
-
-    @access.user(TokenScope.DATA_READ)
-    @filtermodel('folder')
-    @autoDescribeRoute(
-        Description('Retrieves the latest version.')
-        .modelParam('rootId', 'The ID of versions root folder.', model=Folder, force=True,
-                    destName='root', paramType='query')
-        .errorResponse('Access was denied (if current user does not have read access to this tale)',
-                       403)
-    )
-    def getLatestVersion(self, root: dict) -> Optional[dict]:
-        return self._getLastVersion(root)
+    def exists(self, tale: dict, name: str):
+        return super().exists(tale, name)
 
     @classmethod
     def _incrementReferenceCount(cls, vfolder):

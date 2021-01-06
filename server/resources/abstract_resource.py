@@ -8,6 +8,7 @@ from girder.api.v1.resource import Resource
 from girder.constants import AccessType
 from girder.exceptions import RestException
 from girder.models.folder import Folder
+from girder.plugins.wholetale.models.tale import Tale
 from girder.plugins.wholetale.utils import getOrCreateRootFolder
 from girder.utility.model_importer import ModelImporter
 
@@ -17,7 +18,6 @@ class AbstractVRResource(Resource):
         Resource.__init__(self)
         self.resourceName = resourceName
         self.rootDirName = rootDirName
-        self.route('GET', ('root',), self.getRoot)
         self.route('GET', ('clear',), self.clear)
         self.route('POST', (), self.create)
         self.route('GET', (), self.list)
@@ -30,7 +30,7 @@ class AbstractVRResource(Resource):
         self.route('PUT', (':id',), self.rename)
         self.route('DELETE', (':id',), self.delete)
 
-    def _checkAccess(self, tale: dict, model='folder', model_plugin=None):
+    def _checkAccess(self, tale: dict, model='tale', model_plugin='wholetale'):
         user = self.getCurrentUser()
 
         if not ModelImporter.model(model, model_plugin).hasAccess(tale, user, AccessType.WRITE):
@@ -70,11 +70,9 @@ class AbstractVRResource(Resource):
         Folder().updateFolder(rootFolder)
         return (folder, dir)
 
-    def getRoot(self, tale: dict) -> dict:
-        return self._getRootFromTale(tale)
-
-    def clear(self, root: dict) -> None:
-        self._checkAccess(root)
+    def clear(self, tale: dict) -> None:
+        self._checkAccess(tale)
+        root = self._getRootFromTale(tale)
         subdirs = Folder().find({'parentId': root['_id']})
         n = 0
         for v in subdirs:
@@ -105,13 +103,15 @@ class AbstractVRResource(Resource):
         self._checkAccess(vrfolder, model='folder', model_plugin=None)
         return vrfolder
 
-    def list(self, root: dict, limit, offset, sort):
-        self._checkAccess(root)
+    def list(self, tale: dict, limit, offset, sort):
+        self._checkAccess(tale)
+        root = self._getRootFromTale(tale)
         folders = Folder().find({'parentId': root['_id']}, limit=limit, sort=sort, offset=offset)
         return list(folders)
 
-    def exists(self, root: dict, name: str):
-        self._checkAccess(root)
+    def exists(self, tale: dict, name: str):
+        self._checkAccess(tale)
+        root = self._getRootFromTale(tale)
         obj = Folder().findOne({'parentId': root['_id'], 'name': name})
         if obj is None:
             return {'exists': False}
