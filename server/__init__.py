@@ -51,7 +51,9 @@ def createIndex() -> None:
 
 
 def resetCrashedCriticalSections():
-    Folder().update({FIELD_CRITICAL_SECTION_FLAG: True}, {'$set': {FIELD_CRITICAL_SECTION_FLAG: False}})
+    Folder().update(
+        {FIELD_CRITICAL_SECTION_FLAG: True}, {'$set': {FIELD_CRITICAL_SECTION_FLAG: False}}
+    )
 
 
 def load(info):

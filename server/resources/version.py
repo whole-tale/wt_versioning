@@ -10,7 +10,7 @@ from girder import logger
 from girder.api import access
 from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
-from girder.constants import TokenScope
+from girder.constants import AccessType, TokenScope
 from girder.exceptions import RestException
 from girder.models.folder import Folder
 from girder.plugins.wt_data_manager.models.session import Session
@@ -30,13 +30,13 @@ class Version(AbstractVRResource):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
 
-    @access.admin(TokenScope.DATA_WRITE)
+    @access.user
     @autoDescribeRoute(
         Description('Clears all versions from a tale, but does not delete the respective '
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
-        .modelParam('taleId', 'The ID of the tale for which the versions should be cleared', model=Tale,
-               force=True, destName='tale', paramType='query')
+        .modelParam('taleId', 'The ID of the tale for which the versions should be cleared',
+                    model=Tale, level=AccessType.ADMIN, destName='tale', paramType='query')
     )
     def clear(self, tale: dict) -> None:
         super().clear(tale)
@@ -46,7 +46,7 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Rename a version. Returns the renamed version '
                     'folder')
-        .modelParam('id', 'The ID of version', model=Folder, force=True,
+        .modelParam('id', 'The ID of version', model=Folder, level=AccessType.WRITE,
                     destName='vfolder')
         .param('name', 'The new name', required=True, dataType='string')
         .errorResponse('Access was denied (if current user does not have write access to this '
@@ -61,13 +61,12 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Returns the dataset associated with a version, but with some additional '
                     'entries such as the type of object (folder/item) and the object dictionaries.')
-        .modelParam('id', 'The ID of a version', model=Folder, force=True,
+        .modelParam('id', 'The ID of a version', model=Folder, level=AccessType.READ,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have read access to the '
                        'respective version folder.', 403)
     )
     def getDataset(self, vfolder: dict) -> dict:
-        self._checkAccess(vfolder, model='folder', model_plugin=None)
         dataSet = vfolder['dataSet']
         Session().loadObjects(dataSet)
         return dataSet
@@ -76,28 +75,28 @@ class Version(AbstractVRResource):
     @filtermodel("folder")
     @autoDescribeRoute(
         Description('Returns a version.')
-        .modelParam('id', 'The ID of a version', model=Folder, force=True,
+        .modelParam('id', 'The ID of a version', model=Folder, level=AccessType.READ,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have read access to the '
                        'respective version folder.', 403)
     )
     def load(self, vfolder: dict) -> dict:
-        return super().load(vfolder)
+        return vfolder
 
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Creates a new version of a tale. Returns the new version folder.')
         .modelParam('taleId', 'A tale requesting the creation of a new version.',
-                    model=Tale, force=True, destName='tale', paramType='query')
+                    model=Tale, level=AccessType.WRITE, destName='tale', paramType='query')
         .param('name', 'An optional name for the version. If not specified, a name will be '
                        'generated from the current date and time.', required=False,
                dataType='string')
         .param('force', 'Force creation of a version even if no files were modified in the '
                         'workspace since the last version was created.', required=False,
                dataType='boolean', default=False)
-        .errorResponse('Access was denied (if current user does not have write access to this tale)',
-                       403)
+        .errorResponse('Access was denied (if current user does not have write access'
+                       ' to this tale)', 403)
         .errorResponse('Another version is being created. Try again later.', 409)
         .errorResponse('Illegal file name', 400)
         .errorResponse('See other (if tale workspace has not been changed since the last '
@@ -106,7 +105,9 @@ class Version(AbstractVRResource):
                        'the id of the version that represents this last checkpoint.', 303)
     )
     def create(self, tale: dict, name: str = None, force: bool = False) -> dict:
-        self._checkAccess(tale, model='tale', model_plugin='wholetale')
+        if not name:
+            name = self._generateName()
+
         root = self._getRootFromTale(tale)
         self._checkNameSanity(name, root)
 
@@ -122,15 +123,13 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Deletes a version.')
-        .modelParam('id', 'The ID of version folder', model=Folder, force=True,
+        .modelParam('id', 'The ID of version folder', model=Folder, level=AccessType.WRITE,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Version is in use by a run and cannot be deleted.', 461)
     )
     def delete(self, vfolder: dict) -> None:
-        self._checkAccess(vfolder)
-
         root = Folder().load(vfolder['parentId'], force=True)
         Version._setCriticalSectionFlag(root)
         try:
@@ -152,7 +151,8 @@ class Version(AbstractVRResource):
     @autoDescribeRoute(
         Description('Lists versions.')
         .modelParam('taleId', 'The ID of a tale for which versions are to be listed.',
-                    model=Tale, plugin='wholetale', force=True, destName='tale', paramType='query')
+                    model=Tale, plugin='wholetale', level=AccessType.READ,
+                    destName='tale', paramType='query')
         .pagingParams(defaultSort='created')
         .errorResponse('Access was denied (if current user does not have read access to this tale)',
                        403)
@@ -163,7 +163,7 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Check if a version with the given name exists.')
-        .modelParam('taleId', 'The ID of versions root folder.', model=Tale, force=True,
+        .modelParam('taleId', 'The ID of versions root folder.', model=Tale, level=AccessType.READ,
                     destName='tale', paramType='query')
         .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                required=False, dataType='string')
@@ -221,9 +221,6 @@ class Version(AbstractVRResource):
 
     def _create(self, tale: dict, name: Optional[str], versionsDir: Path,
                 versionsRoot: dict, force: bool) -> dict:
-        if not name:
-            name = self._generateName()
-
         last = self._getLastVersion(versionsRoot)
 
         if last is not None:
@@ -266,7 +263,7 @@ class Version(AbstractVRResource):
     def snapshot(self, oldVersionFolder: Optional[dict], oldVersion: Optional[Path],
                  oldData: Optional[List[dict]], crtData: List[dict], crtWorkspace: Path,
                  newVersion: Path, newVersionFolder: dict, force: bool) -> None:
-        '''Creates a new version from the current state and an old version. The implementation
+        """Creates a new version from the current state and an old version. The implementation
         here differs a bit from
         https://docs.google.com/document/d/1b2xZtIYvgVXz7EVeV-C18So_a7QLGg59dPQMxvBcA5o since
         the document assumes traditional use of Girder objects to simulate a filesystem, whereas
@@ -284,7 +281,7 @@ class Version(AbstractVRResource):
         instead of doing an actual copy. This allows for O(1) equality comparisons between files,
         but requires that modifications to files in the workspace always create a new file (which
         is the case if files are only modified through the WebDAV FS mounted in a tale container).
-        '''
+        """
 
         oldWorkspace = None if oldVersion is None else oldVersion / 'workspace'
 

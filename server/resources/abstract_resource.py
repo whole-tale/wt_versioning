@@ -5,12 +5,9 @@ import pathvalidate
 
 from girder import logger
 from girder.api.v1.resource import Resource
-from girder.constants import AccessType
 from girder.exceptions import RestException
 from girder.models.folder import Folder
-from girder.plugins.wholetale.models.tale import Tale
 from girder.plugins.wholetale.utils import getOrCreateRootFolder
-from girder.utility.model_importer import ModelImporter
 
 
 class AbstractVRResource(Resource):
@@ -30,12 +27,6 @@ class AbstractVRResource(Resource):
         self.route('PUT', (':id',), self.rename)
         self.route('DELETE', (':id',), self.delete)
 
-    def _checkAccess(self, tale: dict, model='tale', model_plugin='wholetale'):
-        user = self.getCurrentUser()
-
-        if not ModelImporter.model(model, model_plugin).hasAccess(tale, user, AccessType.WRITE):
-            raise RestException('Access denied', code=403)
-
     def _getRootFromTale(self, tale: dict) -> dict:
         global_root = getOrCreateRootFolder(self.rootDirName)
         root = Folder().findOne({'parentId': global_root['_id'], 'name': str(tale['_id'])})
@@ -43,22 +34,22 @@ class AbstractVRResource(Resource):
 
     def _checkNameSanity(self, name: Optional[str], parentFolder: dict) -> None:
         if not name:
-            return
+            raise RestException('Name cannot be empty.', code=400)
+
         try:
             pathvalidate.validate_filename(name, platform='Linux')
         except pathvalidate.ValidationError:
             raise RestException('Invalid file name: ' + name, code=400)
-        try:
-            Folder().find({'parentId': parentFolder['_id'], 'name': name}, limit=1).next()
+
+        if Folder().findOne({'parentId': parentFolder['_id'], 'name': name}) is not None:
             raise RestException('Name already exists: ' + name, code=409)
-        except StopIteration:
-            pass
 
     def _createSubdir(self, rootDir: Path, rootFolder: dict, name: str) -> Tuple[dict, Path]:
-        '''Create both Girder folder and corresponding directory. The name is stored in the Girder
+        """Create both Girder folder and corresponding directory. The name is stored in the Girder
         folder, whereas the name of the directory is taken from the folder ID. This is a
         deliberate step to discourage renaming of directories directly on disk, which would mess
-        up the mapping between Girder folders and directories'''
+        up the mapping between Girder folders and directories
+        """
         folder = Folder().createFolder(rootFolder, name, creator=self.getCurrentUser())
         dirname = str(folder['_id'])
         dir = rootDir / dirname
@@ -71,7 +62,6 @@ class AbstractVRResource(Resource):
         return (folder, dir)
 
     def clear(self, tale: dict) -> None:
-        self._checkAccess(tale)
         root = self._getRootFromTale(tale)
         subdirs = Folder().find({'parentId': root['_id']})
         n = 0
@@ -89,7 +79,6 @@ class AbstractVRResource(Resource):
     def rename(self, vrfolder: dict, newName: str) -> dict:
         if not newName:
             raise RestException('New name cannot be empty.', code=400)
-        self._checkAccess(vrfolder)
 
         root = Folder().load(vrfolder['parentId'], force=True)
         self._checkNameSanity(newName, root)
@@ -100,17 +89,14 @@ class AbstractVRResource(Resource):
         return vrfolder
 
     def load(self, vrfolder: dict) -> dict:
-        self._checkAccess(vrfolder, model='folder', model_plugin=None)
-        return vrfolder
+        raise NotImplementedError
 
     def list(self, tale: dict, limit, offset, sort):
-        self._checkAccess(tale)
         root = self._getRootFromTale(tale)
         folders = Folder().find({'parentId': root['_id']}, limit=limit, sort=sort, offset=offset)
         return list(folders)
 
     def exists(self, tale: dict, name: str):
-        self._checkAccess(tale)
         root = self._getRootFromTale(tale)
         obj = Folder().findOne({'parentId': root['_id'], 'name': name})
         if obj is None:
