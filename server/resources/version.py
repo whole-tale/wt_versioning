@@ -252,13 +252,12 @@ class Version(AbstractVRResource):
             raise
 
     def _getLastVersion(self, versionsFolder: dict) -> Optional[dict]:
-        # The versions root folder is kept as a pure Girder folder. This is because there is no
-        # efficient way to say "give me the latest subdir" on a POSIX filesystem.
-        try:
-            return Folder().find({'parentId': versionsFolder['_id']}, limit=1,
-                                 sort=[('created', pymongo.DESCENDING)])[0]
-        except IndexError:
-            return None
+        # The versions root folder is kept as a pure Girder folder.
+        # This is because there is no efficient way to
+        # say "give me the latest subdir" on a POSIX filesystem.
+        return Folder().findOne(
+            {'parentId': versionsFolder['_id']}, sort=[('created', pymongo.DESCENDING)]
+        )
 
     def _generateName(self):
         now = datetime.now()
