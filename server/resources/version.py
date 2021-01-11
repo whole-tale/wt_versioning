@@ -240,11 +240,11 @@ class Version(AbstractVRResource):
             self.snapshot(last, oldVersion, oldDataset, dataSet, taleWorkspaceDir, newVersionDir,
                           newVersionFolder, force)
             return newVersionFolder
-        except Exception:
+        except Exception:  # NOQA
             try:
                 shutil.rmtree(newVersionDir)
                 Folder().remove(newVersionFolder)
-            except Exception as ex:
+            except Exception as ex:  # NOQA
                 logger.warning('Exception caught while rolling back version ckeckpoint.', ex)
             raise
 

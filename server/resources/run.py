@@ -306,7 +306,7 @@ class Run(AbstractVRResource):
                     self._wait(1)
 
             self._setStatus(rfolder, RunStatus.COMPLETED)
-        except Exception as ex:
+        except Exception as ex:  # NOQA
             logger.warn('Exception faking run', ex)
 
     def _wait(self, secs):
