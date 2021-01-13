@@ -359,7 +359,7 @@ class Version(AbstractVRResource):
                 return False
 
             if crtc.is_dir():
-                if not self._isSame(oldc, crtc):
+                if not self._sameTree(oldc, crtc):
                     return False
             else:
                 if not oldc.samefile(crtc):
