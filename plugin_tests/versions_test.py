@@ -75,7 +75,9 @@ class VersionTestCase(base.TestCase):
             ),
         )
 
-    def _create_example_tale(self):
+    def _create_example_tale(self, dataset=None):
+        if dataset is None:
+            dataset = []
         tale = {
             "authors": [
                 {
@@ -86,7 +88,7 @@ class VersionTestCase(base.TestCase):
             ],
             "category": "science",
             "config": {},
-            "dataSet": [],
+            "dataSet": dataset,
             "description": "Something something...",
             "imageId": str(self.image["_id"]),
             "public": False,
@@ -187,7 +189,7 @@ class VersionTestCase(base.TestCase):
         self.assertStatusOk(resp)
         new_version = resp.json
         year = new_version["created"][:4]
-        self.assertTrue(new_version["name"].endswith(year))  # it's a date
+        self.assertTrue(year in new_version["name"])  # it's a date
 
         # Check that Tale has two versions
         resp = self.request(
@@ -234,6 +236,23 @@ class VersionTestCase(base.TestCase):
         )
         self.assertTrue(should_be_a_file.is_file())
 
+        # Try to create a version with no changes (should fail) test recursion
+        resp = self.request(
+            path="/version",
+            method="POST",
+            user=self.user_one,
+            params={"taleId": tale["_id"]},
+        )
+        self.assertStatus(resp, 303)
+        self.assertEqual(
+            resp.json,
+            {
+                "extra": str(new_version["_id"]),
+                "message": "Not modified",
+                "type": "rest",
+            },
+        )
+
         # Remove and see if it's gone
         resp = self.request(
             path=f"/version/{new_version['_id']}", method="DELETE", user=self.user_one
@@ -250,4 +269,51 @@ class VersionTestCase(base.TestCase):
         )
 
         # Clean up
+        self._remove_example_tale(tale)
+
+    def testDatasetHandling(self):
+        user_data_map = [
+            {
+                "dataId": "resource_map_doi:10.5065/D6862DM8",
+                "doi": "10.5065/D6862DM8",
+                "name": "Humans and Hydrology at High Latitudes: Water Use Information",
+                "repository": "DataONE",
+                "size": 28_856_295,
+            }
+        ]
+
+        resp = self.request(
+            path="/dataset/register",
+            method="POST",
+            params={"dataMap": json.dumps(user_data_map)},
+            user=self.user_one,
+        )
+        self.assertStatusOk(resp)
+
+        user = User().load(self.user_one["_id"], force=True)
+        dataset = [
+            {
+                "_modelType": "folder",
+                "itemId": str(user["myData"][0]),
+                "mountPath": user_data_map[0]["name"],
+            }
+        ]
+        tale = self._create_example_tale(dataset=dataset)
+        resp = self.request(
+            path="/version",
+            method="POST",
+            user=self.user_one,
+            params={"taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        version = resp.json
+
+        # Check if dataset was stored
+        resp = self.request(
+            path=f"/version/{version['_id']}/dataSet", method="GET", user=self.user_one
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(len(resp.json), 1)
+        self.assertEqual(resp.json[0]["itemId"], dataset[0]["itemId"])
+
         self._remove_example_tale(tale)
