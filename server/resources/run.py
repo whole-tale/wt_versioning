@@ -13,7 +13,7 @@ from girder import logger
 from girder.api import access
 from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
-from girder.constants import TokenScope
+from girder.constants import AccessType, TokenScope
 from girder.models.folder import Folder
 from girder.plugins.wholetale.models.tale import Tale
 from .version import Version
@@ -38,7 +38,7 @@ class Run(AbstractVRResource):
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Retrieves the runs root folder for this tale.')
-        .modelParam('taleId', 'The ID of a tale', model=Tale, force=True,
+        .modelParam('taleId', 'The ID of a tale', model=Tale, level=AccessType.READ,
                     paramType='query', destName='tale')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
@@ -46,12 +46,12 @@ class Run(AbstractVRResource):
     def getRoot(self, tale: dict) -> dict:
         return super().getRoot(tale)
 
-    @access.admin(TokenScope.DATA_WRITE)
+    @access.user
     @autoDescribeRoute(
         Description('Clears all runs from a tale, but does not delete the respective '
                     'directories on disk. This is an administrative operation and should not be'
                     'used under normal circumstances.')
-        .modelParam('taleId', 'The ID of the runs root folder', model=Tale, force=True,
+        .modelParam('taleId', 'The ID of the runs root folder', model=Tale, level=AccessType.ADMIN,
                     destName='tale', paramType='query')
     )
     def clear(self, tale: dict) -> None:
@@ -61,7 +61,7 @@ class Run(AbstractVRResource):
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Rename a run associated with a tale. Returns the renamed run folder')
-        .modelParam('id', 'The ID of a run', model=Folder, force=True,
+        .modelParam('id', 'The ID of a run', model=Folder, level=AccessType.WRITE,
                     destName='rfolder')
         .param('name', 'The new name', required=True, dataType='string', paramType='query')
         .errorResponse('Access was denied (if current user does not have write access to this '
@@ -74,20 +74,21 @@ class Run(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Returns a run.')
-        .modelParam('id', 'The ID of a run.', model=Folder, force=True,
+        .modelParam('id', 'The ID of a run.', model=Folder, level=AccessType.READ,
                     destName='rfolder')
         .errorResponse('Access was denied (if current user does not have read access to the '
                        'respective run folder.', 403)
     )
     def load(self, rfolder: dict) -> dict:
-        return super().load(rfolder)
+        return rfolder
 
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Creates a new empty run associated with a given version and returns the new '
                     'run folder. This does not actually start any computation.')
-        .modelParam('versionId', 'A version to create the run from.', model=Folder, force=True,
+        .modelParam('versionId', 'A version to create the run from.',
+                    model=Folder, level=AccessType.WRITE,
                     destName='version', paramType='query')
         .param('name', 'An optional name for the run. If not specified, a name will be '
                        'generated from the current date and time.', required=False,
@@ -97,9 +98,10 @@ class Run(AbstractVRResource):
         .errorResponse('Illegal file name', 400)
     )
     def create(self, version: dict, name: str = None) -> dict:
-        versionsRoot = Folder().load(version['parentId'], force=True)
+        user = self.getCurrentUser()
+        versionsRoot = Folder().load(version['parentId'], user=user, level=AccessType.WRITE)
         taleId = versionsRoot['taleId']
-        tale = Tale().load(taleId, force=True)
+        tale = Tale().load(taleId, user=user, level=AccessType.WRITE)
 
         root = self._getRootFromTale(tale)
         self._checkAccess(root)
@@ -115,23 +117,21 @@ class Run(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
         Description('Deletes a run.')
-        .modelParam('id', 'The ID of run', model=Folder, force=True,
+        .modelParam('id', 'The ID of run', model=Folder, level=AccessType.WRITE,
                     destName='rfolder')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
     )
     def delete(self, rfolder: dict) -> None:
-        self._checkAccess(rfolder)
-
         path = Path(rfolder['fsPath'])
         trashDir = path.parent / '.trash'
 
-        version = Folder().load(rfolder['runVersionId'], force=True)
+        version = Folder().load(
+            rfolder['runVersionId'], level=AccessType.WRTITE, user=self.getCurrentUser()
+        )
 
         Folder().remove(rfolder)
-
         shutil.move(path.as_posix(), trashDir)
-
         Version._decrementReferenceCount(version)
 
     @access.user(TokenScope.DATA_READ)
@@ -139,7 +139,7 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Lists runs.')
         .modelParam('taleId', 'The ID of the tale to which the runs belong.', model=Tale,
-                    force=True, destName='tale')
+                    level=AccessType.READ, destName='tale')
         .pagingParams(defaultSort='created')
         .errorResponse('Access was denied (if current user does not have read access to this '
                        'tale)', 403)
@@ -150,8 +150,8 @@ class Run(AbstractVRResource):
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
         Description('Check if a run exists.')
-        .modelParam('taleId', 'The ID of a tale.', model=Tale, force=True, destName='tale',
-                    paramType='query')
+        .modelParam('taleId', 'The ID of a tale.', model=Tale, level=AccessType.READ,
+                    destName='tale', paramType='query')
         .param('name', 'Return the folder with this name or nothing if no such folder exists.',
                required=False, dataType='string')
         .errorResponse('Access was denied (if current user does not have read access to this '
@@ -166,12 +166,12 @@ class Run(AbstractVRResource):
                     'statusString. The possible values for status, an integer, are 0, 1, 2, 3, 4, '
                     '5, with statusString being, respectively, UNKNOWN, STARTING, RUNNING, '
                     'COMPLETED, FAILED, CANCELLED.')
-        .modelParam('id', 'The ID of a run.', model=Folder, force=True, destName='rfolder')
+        .modelParam('id', 'The ID of a run.', model=Folder,
+                    level=AccessType.READ, destName='rfolder')
         .errorResponse('Access was denied (if current user does not have read access to '
                        'this run)', 403)
     )
     def status(self, rfolder: dict) -> dict:
-        self._checkAccess(rfolder)
         if FIELD_STATUS_CODE in rfolder:
             rs = RunStatus.get(rfolder[FIELD_STATUS_CODE])
         else:
@@ -182,13 +182,13 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Sets the status of the run. See the status query endpoint for details about '
                     'the meaning of the code.')
-        .modelParam('id', 'The ID of a run.', model=Folder, force=True, destName='rfolder')
+        .modelParam('id', 'The ID of a run.', model=Folder,
+                    level=AccessType.WRITE, destName='rfolder')
         .param('status', 'The status code.', dataType='integer', required=True)
         .errorResponse('Access was denied (if current user does not have read access to '
                        'this run)', 403)
     )
     def setStatus(self, rfolder: dict, status: Union[int, RunState]) -> None:
-        self._checkAccess(rfolder)
         self._setStatus(rfolder, status)
 
     def _setStatus(self, rfolder: dict, status: Union[int, RunState]) -> None:
@@ -207,7 +207,8 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Appends data to the .stdout and .stderr files. One of stdoutData and '
                     'stderrData parameters is required.')
-        .modelParam('id', 'The ID of a run.', model=Folder, force=True, destName='rfolder')
+        .modelParam('id', 'The ID of a run.', model=Folder,
+                    level=AccessType.WRITE, destName='rfolder')
         .param('stdoutData', 'Data to append to .stdout', dataType='string', required=False)
         .param('stderrData', 'Data to append to .stderr', dataType='string', required=False)
         .errorResponse('Access was denied (if current user does not have read access to '
@@ -278,7 +279,7 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Fakes a run. Slowly updates the status, adds text to stdout/stderr, and puts'
                     'files in the results dir.')
-        .modelParam('id', 'The ID of a run.', model=Folder, force=True,
+        .modelParam('id', 'The ID of a run.', model=Folder, level=AccessType.WRITE,
                     destName='rfolder')
         .errorResponse('Access was denied (if current user does not have write access to '
                        'this run)', 403)
@@ -305,7 +306,7 @@ class Run(AbstractVRResource):
                     self._wait(1)
 
             self._setStatus(rfolder, RunStatus.COMPLETED)
-        except Exception as ex:
+        except Exception as ex:  # NOQA
             logger.warn('Exception faking run', ex)
 
     def _wait(self, secs):
