@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 from datetime import datetime
@@ -14,7 +15,10 @@ from girder.constants import AccessType, TokenScope
 from girder.exceptions import RestException
 from girder.models.folder import Folder
 from girder.plugins.wt_data_manager.models.session import Session
+from girder.plugins.wholetale.lib.manifest import Manifest
+from girder.plugins.wholetale.models.image import Image
 from girder.plugins.wholetale.models.tale import Tale
+from girder.utility import JsonEncoder
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants
 from ..lib import util
@@ -246,11 +250,7 @@ class Version(AbstractVRResource):
         (newVersionFolder, newVersionDir) = self._createSubdir(versionsDir, versionsRoot, name)
 
         try:
-            dataSet = tale['dataSet']
-            workspace = Folder().load(tale["workspaceId"], force=True)
-            taleWorkspaceDir = Path(workspace["fsPath"])
-
-            self.snapshot(last, oldVersion, oldDataset, dataSet, taleWorkspaceDir, newVersionDir,
+            self.snapshot(last, oldVersion, oldDataset, tale, newVersionDir,
                           newVersionFolder, force)
             return newVersionFolder
         except Exception:  # NOQA
@@ -274,7 +274,7 @@ class Version(AbstractVRResource):
         return now.strftime(VERSION_NAME_FORMAT)
 
     def snapshot(self, oldVersionFolder: Optional[dict], oldVersion: Optional[Path],
-                 oldData: Optional[List[dict]], crtData: List[dict], crtWorkspace: Path,
+                 oldData: Optional[List[dict]], tale: dict,
                  newVersion: Path, newVersionFolder: dict, force: bool) -> None:
         """Creates a new version from the current state and an old version. The implementation
         here differs a bit from
@@ -296,6 +296,11 @@ class Version(AbstractVRResource):
         is the case if files are only modified through the WebDAV FS mounted in a tale container).
         """
 
+        user = self.getCurrentUser()
+        crtData = tale["dataSet"]
+        workspace = Folder().load(tale["workspaceId"], force=True)
+        crtWorkspace = Path(workspace["fsPath"])
+
         oldWorkspace = None if oldVersion is None else oldVersion / 'workspace'
 
         if not force and self._sameData(oldData, crtData) and \
@@ -308,6 +313,26 @@ class Version(AbstractVRResource):
         # TODO: may want to have a dataSet model and avoid all the duplication
         newVersionFolder['dataSet'] = crtData.copy()
         Folder().save(newVersionFolder, False)
+
+        with open((newVersion / "manifest.json").as_posix(), "w") as fp:
+            json.dump(
+                Manifest(tale, user, expand_folders=False).manifest,
+                fp,
+                cls=JsonEncoder,
+                sort_keys=True,
+                allow_nan=False
+            )
+
+        image = Image().load(tale["imageId"], user=user, level=AccessType.READ)
+        image["taleConfig"] = tale.get("config", {})
+        with open((newVersion / "environment.json").as_posix(), "w") as fp:
+            json.dump(
+                Image().filter(image, user),
+                fp,
+                cls=JsonEncoder,
+                sort_keys=True,
+                allow_nan=False
+            )
 
         newWorkspace = newVersion / 'workspace'
         newWorkspace.mkdir()
