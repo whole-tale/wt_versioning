@@ -16,6 +16,7 @@ from girder.exceptions import RestException
 from girder.models.folder import Folder
 from girder.plugins.wt_data_manager.models.session import Session
 from girder.plugins.wholetale.lib.manifest import Manifest
+from girder.plugins.wholetale.lib.manifest_parser import ManifestParser as mp
 from girder.plugins.wholetale.models.image import Image
 from girder.plugins.wholetale.models.tale import Tale
 from girder.utility import JsonEncoder
@@ -35,6 +36,7 @@ class Version(AbstractVRResource):
     def __init__(self):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
+        self.route('POST', (':id', 'restore'), self.restore)
 
     @access.user
     @autoDescribeRoute(
@@ -136,6 +138,51 @@ class Version(AbstractVRResource):
         finally:
             # probably need a better way to deal with hard crashes here
             Version._resetCriticalSectionFlag(root)
+
+    @access.user(TokenScope.DATA_WRITE)
+    @filtermodel(model="tale", plugin="wholetale")
+    @autoDescribeRoute(
+        Description('Restores a version.')
+        .modelParam('id', 'The ID of version folder', model=Folder, level=AccessType.WRITE,
+                    destName='version')
+        .errorResponse('Access was denied (if current user does not have write access to this '
+                       'tale)', 403)
+        .errorResponse('Version is in use by a run and cannot be deleted.', 461)
+    )
+    def restore(self, version: dict):
+        user = self.getCurrentUser()
+        version_root = Folder().load(version["parentId"], user=user, level=AccessType.WRITE)
+        tale = Tale().load(version_root["meta"]["taleId"], user=user, level=AccessType.WRITE)
+
+        workspace = Folder().load(tale["workspaceId"], force=True)
+        workspace_path = Path(workspace["fsPath"])
+        version = Folder().load(version["_id"], force=True, fields=["fsPath"])
+        version_path = Path(version["fsPath"])
+        version_workspace_path = version_path / "workspace"
+
+        if not Version._setCriticalSectionFlag(version_root):
+            raise RestException('Another operation is in progress. Try again later.', 409)
+        try:
+            # restore workspace
+            shutil.rmtree(workspace_path)
+            workspace_path.mkdir()
+            self._snapshotRecursive(None, version_workspace_path, workspace_path)
+
+            # restore Tale
+            with open((version_path / "manifest.json").as_posix(), "r") as fp:
+                manifest = json.load(fp)
+
+            with open((version_path / "environment.json").as_posix(), "r") as fp:
+                env = json.load(fp)
+
+            restored_tale = mp.get_tale_fields_from_manifest(manifest)
+            restored_tale.update(mp.get_tale_fields_from_environment(env))
+            restored_tale["dataSet"] = mp.get_dataset_from_manifest(manifest)
+            tale.update(restored_tale)
+            return Tale().save(tale)
+        finally:
+            # probably need a better way to deal with hard crashes here
+            Version._resetCriticalSectionFlag(version_root)
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
