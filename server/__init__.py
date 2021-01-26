@@ -3,7 +3,7 @@
 from girder.plugins.wholetale.models.tale import Tale
 
 from girder import events
-from girder.constants import SettingDefault
+from girder.constants import AccessType, SettingDefault
 from girder.models.folder import Folder
 from girder.models.user import User
 from girder.utility import setting_utilities
@@ -40,10 +40,18 @@ def _createAuxFolder(tale, name, rootProp, creator):
 def addVersionsAndRuns(event: events.Event) -> None:
     tale = event.info
     creator = User().load(tale['creatorId'], force=True)
-    _createAuxFolder(tale, Constants.VERSIONS_ROOT_DIR_NAME,
-                     PluginSettings.VERSIONS_DIRS_ROOT, creator)
-    _createAuxFolder(tale, Constants.RUNS_ROOT_DIR_NAME,
-                     PluginSettings.RUNS_DIRS_ROOT, creator)
+    versions_root, _ = _createAuxFolder(
+        tale, Constants.VERSIONS_ROOT_DIR_NAME,
+        PluginSettings.VERSIONS_DIRS_ROOT, creator
+    )
+    tale["versionsRootId"] = versions_root["_id"]
+    runs_root, _ = _createAuxFolder(
+        tale, Constants.RUNS_ROOT_DIR_NAME,
+        PluginSettings.RUNS_DIRS_ROOT, creator
+    )
+    tale["runsRootId"] = runs_root["_id"]
+    tale = Tale().save(tale)
+    event.addResponse(tale)
 
 
 def createIndex() -> None:
@@ -62,6 +70,7 @@ def load(info):
     resetCrashedCriticalSections()
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
+    Tale().exposeFields(level=AccessType.READ, fields={"versionsRootId", "runsRootId"})
 
     info['apiRoot'].version = Version()
     info['apiRoot'].run = Run()
