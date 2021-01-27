@@ -27,6 +27,8 @@ RUN_NAME_FORMAT = '%c'
 
 
 class Run(AbstractVRResource):
+    root_tale_field = "runsRootId"
+
     def __init__(self):
         super().__init__('run', Constants.RUNS_ROOT_DIR_NAME)
         self.route('PATCH', (':id', 'stream'), self.stream)
@@ -103,8 +105,7 @@ class Run(AbstractVRResource):
         taleId = versionsRoot['taleId']
         tale = Tale().load(taleId, user=user, level=AccessType.WRITE)
 
-        root = self._getRootFromTale(tale)
-        self._checkAccess(root)
+        root = self._getRootFromTale(tale, user=user, level=AccessType.WRITE)
         self._checkNameSanity(name, root)
 
         rootDir = util.getTaleRunsDirPath(tale)
