@@ -31,10 +31,10 @@ VERSION_NAME_FORMAT = '%c'
 
 
 class Version(AbstractVRResource):
-    def __init__(self):
+    def __init__(self, tale_node):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
-        self.route('POST', (':id', 'restore'), self.restore)
+        tale_node.route("PUT", (":id", "restore"), self.restore)
 
     @access.user
     @autoDescribeRoute(
@@ -129,17 +129,29 @@ class Version(AbstractVRResource):
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel(model="tale", plugin="wholetale")
     @autoDescribeRoute(
-        Description('Restores a version.')
-        .modelParam('id', 'The ID of version folder', model=Folder, level=AccessType.WRITE,
-                    destName='version')
-        .errorResponse('Access was denied (if current user does not have write access to this '
-                       'tale)', 403)
-        .errorResponse('Version is in use by a run and cannot be deleted.', 461)
+        Description("Restores a version.")
+        .modelParam(
+            "id",
+            "The ID of the Tale to be modified.",
+            model=Tale,
+            level=AccessType.WRITE,
+            destName="tale"
+        )
+        .modelParam(
+            "versionId",
+            "The ID of version folder",
+            model=Folder,
+            level=AccessType.READ,
+            destName="version",
+            paramType="query"
+        )
+        .errorResponse("Access was denied (if current user does not have write access to this "
+                       "tale)", 403)
+        .errorResponse("Version is in use by a run and cannot be deleted.", 461)
     )
-    def restore(self, version: dict):
+    def restore(self, tale: dict, version: dict):
         user = self.getCurrentUser()
-        version_root = Folder().load(version["parentId"], user=user, level=AccessType.WRITE)
-        tale = Tale().load(version_root["meta"]["taleId"], user=user, level=AccessType.WRITE)
+        version_root = Folder().load(version["parentId"], user=user, level=AccessType.READ)
 
         workspace = Folder().load(tale["workspaceId"], force=True)
         workspace_path = Path(workspace["fsPath"])

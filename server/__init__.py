@@ -63,5 +63,5 @@ def load(info):
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
 
-    info['apiRoot'].version = Version()
+    info['apiRoot'].version = Version(info["apiRoot"].tale)
     info['apiRoot'].run = Run()
