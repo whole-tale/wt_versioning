@@ -152,8 +152,6 @@ class VersionTestCase(base.TestCase):
         )
         self.assertStatusOk(resp)
         tale = resp.json
-        if "_accessLevel" not in resp.json:
-            tale = Tale().filter(tale, self.user_one)  # <- this is a bug
         return tale
 
     def _remove_example_tale(self, tale, user=None):

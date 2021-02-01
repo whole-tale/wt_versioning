@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional
 
 import pathvalidate
 
@@ -62,22 +62,24 @@ class AbstractVRResource(Resource):
                 break
         return q["name"]
 
-    def _createSubdir(self, rootDir: Path, rootFolder: dict, name: str) -> Tuple[dict, Path]:
+    def _createSubdir(
+        self, rootDir: Path, rootFolder: dict, name: str, user=None
+    ) -> dict:
         """Create both Girder folder and corresponding directory. The name is stored in the Girder
         folder, whereas the name of the directory is taken from the folder ID. This is a
         deliberate step to discourage renaming of directories directly on disk, which would mess
         up the mapping between Girder folders and directories
         """
-        folder = Folder().createFolder(rootFolder, name, creator=self.getCurrentUser())
+        folder = Folder().createFolder(rootFolder, name, creator=user)
         dirname = str(folder['_id'])
         dir = rootDir / dirname
         dir.mkdir(parents=True)
         folder.update({'fsPath': dir.absolute().as_posix(), 'isMapping': True})
-        Folder().save(folder, validate=False, triggerEvents=False)
+        folder = Folder().save(folder, validate=False, triggerEvents=False)
 
         # update the time
         Folder().updateFolder(rootFolder)
-        return (folder, dir)
+        return folder
 
     def clear(self, tale: dict) -> None:
         user = self.getCurrentUser()

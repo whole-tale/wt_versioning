@@ -1,3 +1,4 @@
+from bson import ObjectId
 import json
 import os
 import shutil
@@ -17,9 +18,7 @@ from girder.models.folder import Folder
 from girder.plugins.wt_data_manager.models.session import Session
 from girder.plugins.wholetale.lib.manifest import Manifest
 from girder.plugins.wholetale.lib.manifest_parser import ManifestParser as mp
-from girder.plugins.wholetale.models.image import Image
 from girder.plugins.wholetale.models.tale import Tale
-from girder.utility import JsonEncoder
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants
 from ..lib import util
@@ -72,12 +71,15 @@ class Version(AbstractVRResource):
         Description('Returns the dataset associated with a version, but with some additional '
                     'entries such as the type of object (folder/item) and the object dictionaries.')
         .modelParam('id', 'The ID of a version', model=Folder, level=AccessType.READ,
-                    destName='vfolder')
+                    destName='version')
         .errorResponse('Access was denied (if current user does not have read access to the '
                        'respective version folder.', 403)
     )
-    def getDataset(self, vfolder: dict) -> dict:
-        dataSet = vfolder['dataSet']
+    def getDataset(self, version: dict) -> dict:
+        version_path = Path(version["fsPath"])
+        with open((version_path / "manifest.json").as_posix(), "r") as fp:
+            manifest = json.load(fp)
+        dataSet = mp.get_dataset_from_manifest(manifest)
         Session().loadObjects(dataSet)
         return dataSet
 
@@ -134,7 +136,7 @@ class Version(AbstractVRResource):
             raise RestException('Another operation is in progress. Try again later.', 409)
         try:
             rootDir = util.getTaleVersionsDirPath(tale)
-            return self._create(tale, name, rootDir, root, force)
+            return self._create(tale, name, rootDir, root, user=user, force=force)
         finally:
             # probably need a better way to deal with hard crashes here
             Version._resetCriticalSectionFlag(root)
@@ -169,8 +171,7 @@ class Version(AbstractVRResource):
         workspace = Folder().load(tale["workspaceId"], force=True)
         workspace_path = Path(workspace["fsPath"])
         version = Folder().load(version["_id"], force=True, fields=["fsPath"])
-        version_path = Path(version["fsPath"])
-        version_workspace_path = version_path / "workspace"
+        version_workspace_path = Path(version["fsPath"]) / "workspace"
 
         if not Version._setCriticalSectionFlag(version_root):
             raise RestException('Another operation is in progress. Try again later.', 409)
@@ -179,22 +180,23 @@ class Version(AbstractVRResource):
             shutil.rmtree(workspace_path)
             workspace_path.mkdir()
             self._snapshotRecursive(None, version_workspace_path, workspace_path)
-
             # restore Tale
-            with open((version_path / "manifest.json").as_posix(), "r") as fp:
-                manifest = json.load(fp)
-
-            with open((version_path / "environment.json").as_posix(), "r") as fp:
-                env = json.load(fp)
-
-            restored_tale = mp.get_tale_fields_from_manifest(manifest)
-            restored_tale.update(mp.get_tale_fields_from_environment(env))
-            restored_tale["dataSet"] = mp.get_dataset_from_manifest(manifest)
-            tale.update(restored_tale)
+            tale.update(self._restoreTaleFromVersion(version))
             return Tale().save(tale)
         finally:
             # probably need a better way to deal with hard crashes here
             Version._resetCriticalSectionFlag(version_root)
+
+    def _restoreTaleFromVersion(self, version, annotate=True):
+        version_path = Path(version["fsPath"])
+        with open((version_path / "manifest.json").as_posix(), "r") as fp:
+            manifest = json.load(fp)
+        with open((version_path / "environment.json").as_posix(), "r") as fp:
+            env = json.load(fp)
+        restored_tale = Tale().restoreTale(manifest, env)
+        if annotate:
+            restored_tale["restoredFrom"] = version["_id"]
+        return restored_tale
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
@@ -295,27 +297,32 @@ class Version(AbstractVRResource):
             multi=False)
         return result.matched_count > 0
 
-    def _create(self, tale: dict, name: Optional[str], versionsDir: Path,
-                versionsRoot: dict, force: bool) -> dict:
+    def _create(
+        self, tale: dict, name: Optional[str], versionsDir: Path,
+        versionsRoot: dict, user=None, force=False
+    ) -> dict:
         last = self._getLastVersion(versionsRoot)
+        last_restore = Folder().load(tale.get("restoredFrom", ObjectId()), force=True)
+        workspace = Folder().load(tale["workspaceId"], force=True)
+        crtWorkspace = Path(workspace["fsPath"])
 
-        if last is not None:
-            oldVersion = Path(last['fsPath'])  # type: Optional[Path]
-            oldDataset = last['dataSet']  # type: Optional[List[dict]]
-        else:
-            oldVersion = None
-            oldDataset = None
+        # NOTE: order is important, we want oldWorkspace -> last.workspace
+        for version in (last_restore, last):
+            oldWorkspace = None if version is None else Path(version["fsPath"]) / "workspace"
+            if not force and self._is_same(tale, version, user) and \
+                    self._sameTree(oldWorkspace, crtWorkspace):
+                assert version is not None
+                raise RestException('Not modified', 303, str(version['_id']))
 
-        (newVersionFolder, newVersionDir) = self._createSubdir(versionsDir, versionsRoot, name)
+        new_version = self._createSubdir(versionsDir, versionsRoot, name, user=user)
 
         try:
-            self.snapshot(last, oldVersion, oldDataset, tale, newVersionDir,
-                          newVersionFolder, force)
-            return newVersionFolder
+            self.snapshot(last, tale, new_version, user=user, force=force)
+            return new_version
         except Exception:  # NOQA
             try:
-                shutil.rmtree(newVersionDir)
-                Folder().remove(newVersionFolder)
+                shutil.rmtree(new_version["fsPath"])
+                Folder().remove(new_version)
             except Exception as ex:  # NOQA
                 logger.warning('Exception caught while rolling back version ckeckpoint.', ex)
             raise
@@ -332,9 +339,14 @@ class Version(AbstractVRResource):
         now = datetime.now()
         return now.strftime(VERSION_NAME_FORMAT)
 
-    def snapshot(self, oldVersionFolder: Optional[dict], oldVersion: Optional[Path],
-                 oldData: Optional[List[dict]], tale: dict,
-                 newVersion: Path, newVersionFolder: dict, force: bool) -> None:
+    def snapshot(
+        self,
+        version: Optional[dict],
+        tale: dict,
+        new_version: dict,
+        user=None,
+        force=False
+    ) -> None:
         """Creates a new version from the current state and an old version. The implementation
         here differs a bit from
         https://docs.google.com/document/d/1b2xZtIYvgVXz7EVeV-C18So_a7QLGg59dPQMxvBcA5o since
@@ -354,48 +366,19 @@ class Version(AbstractVRResource):
         but requires that modifications to files in the workspace always create a new file (which
         is the case if files are only modified through the WebDAV FS mounted in a tale container).
         """
+        new_version_path = Path(new_version["fsPath"])
+        manifest = Manifest(tale, user, expand_folders=False)
+        with open((new_version_path / "manifest.json").as_posix(), "w") as fp:
+            fp.write(manifest.dump_manifest())
 
-        user = self.getCurrentUser()
-        crtData = tale["dataSet"]
+        with open((new_version_path / "environment.json").as_posix(), "w") as fp:
+            fp.write(manifest.dump_environment())
+
+        oldWorkspace = None if version is None else Path(version["fsPath"]) / "workspace"
         workspace = Folder().load(tale["workspaceId"], force=True)
         crtWorkspace = Path(workspace["fsPath"])
-
-        oldWorkspace = None if oldVersion is None else oldVersion / 'workspace'
-
-        if not force and self._sameData(oldData, crtData) and \
-                self._sameTree(oldWorkspace, crtWorkspace):
-            assert oldVersionFolder is not None
-            raise RestException('Not modified', 303, str(oldVersionFolder['_id']))
-        dataDir = newVersion / 'data'
-        dataDir.mkdir()
-
-        # TODO: may want to have a dataSet model and avoid all the duplication
-        newVersionFolder['dataSet'] = crtData.copy()
-        Folder().save(newVersionFolder, False)
-
-        with open((newVersion / "manifest.json").as_posix(), "w") as fp:
-            json.dump(
-                Manifest(tale, user, expand_folders=False).manifest,
-                fp,
-                cls=JsonEncoder,
-                sort_keys=True,
-                allow_nan=False
-            )
-
-        image = Image().load(tale["imageId"], user=user, level=AccessType.READ)
-        image["taleConfig"] = tale.get("config", {})
-        with open((newVersion / "environment.json").as_posix(), "w") as fp:
-            json.dump(
-                Image().filter(image, user),
-                fp,
-                cls=JsonEncoder,
-                sort_keys=True,
-                allow_nan=False
-            )
-
-        newWorkspace = newVersion / 'workspace'
+        newWorkspace = new_version_path / 'workspace'
         newWorkspace.mkdir()
-
         self._snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
 
     def _snapshotRecursive(self, old: Optional[Path], crt: Path, new: Path) -> None:
@@ -425,22 +408,28 @@ class Version(AbstractVRResource):
                     raise
                 shutil.copystat(crtcstr, newcstr)
 
-    def _sameData(self, old: Optional[List[dict]], crt: List[dict]):
+    def _is_same(self, tale, version, user):
+        workspace = Folder().load(tale["workspaceId"], force=True)
+        tale_workspace_path = Path(workspace["fsPath"])
+
+        version_path = None if version is None else Path(version["fsPath"])
+        version_workspace_path = None if version_path is None else version_path / "workspace"
+
+        manifest_obj = Manifest(tale, user)
+        manifest = json.loads(manifest_obj.dump_manifest())
+        environment = json.loads(manifest_obj.dump_environment())
+        tale_restored_from_wrk = Tale().restoreTale(manifest, environment)
+        tale_restored_from_ver = \
+            self._restoreTaleFromVersion(version, annotate=False) if version else None
+
+        if self._sameTaleMetadata(tale_restored_from_ver, tale_restored_from_wrk) and \
+                self._sameTree(version_workspace_path, tale_workspace_path):
+            raise RestException('Not modified', 303, str(version["_id"]))
+
+    def _sameTaleMetadata(self, old: Optional[dict], crt: dict):
         if old is None:
             return False
-        if len(old) != len(crt):
-            return False
-
-        for i in range(len(old)):
-            oldc = old[i]
-            crtc = crt[i]
-
-            if oldc['itemId'] != crtc['itemId']:
-                return False
-            if oldc['mountPath'] != oldc['mountPath']:
-                return False
-
-        return True
+        return old == crt
 
     def _sameTree(self, old: Optional[Path], crt: Path) -> bool:
         if old is None:
