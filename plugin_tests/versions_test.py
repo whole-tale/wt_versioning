@@ -268,6 +268,16 @@ class VersionTestCase(base.TestCase):
             {"message": f"Invalid folder id ({new_version['_id']}).", "type": "rest"},
         )
 
+        # Test allow rename
+        resp = self.request(
+            path="/version",
+            method="POST",
+            user=self.user_one,
+            params={"name": "First Version", "taleId": tale["_id"], "allowRename": True},
+        )
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json["name"], "First Version (1)")
+
         # Clean up
         self._remove_example_tale(tale)
 

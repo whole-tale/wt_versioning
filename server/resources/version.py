@@ -97,6 +97,8 @@ class Version(AbstractVRResource):
         .param('force', 'Force creation of a version even if no files were modified in the '
                         'workspace since the last version was created.', required=False,
                dataType='boolean', default=False)
+        .param('allowRename', 'Allow to modify "name" if object with the same name'
+               'already exists.', required=False, dataType='boolean', default=False)
         .errorResponse('Access was denied (if current user does not have write access'
                        ' to this tale)', 403)
         .errorResponse('Another version is being created. Try again later.', 409)
@@ -106,13 +108,19 @@ class Version(AbstractVRResource):
                        'is a JSON object. This object will have an "extra" attribute containing'
                        'the id of the version that represents this last checkpoint.', 303)
     )
-    def create(self, tale: dict, name: str = None, force: bool = False) -> dict:
+    def create(
+        self,
+        tale: dict,
+        name: str = None,
+        force: bool = False,
+        allowRename: bool = False
+    ) -> dict:
         if not name:
             name = self._generateName()
         user = self.getCurrentUser()
 
         root = self._getRootFromTale(tale, user=user, level=AccessType.WRITE)
-        self._checkNameSanity(name, root)
+        name = self._checkNameSanity(name, root, allow_rename=allowRename)
 
         if not Version._setCriticalSectionFlag(root):
             raise RestException('Another operation is in progress. Try again later.', 409)
