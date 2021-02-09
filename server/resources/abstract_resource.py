@@ -4,13 +4,15 @@ from typing import Tuple, Optional
 import pathvalidate
 
 from girder import logger
+from girder.constants import AccessType
 from girder.api.v1.resource import Resource
 from girder.exceptions import RestException
 from girder.models.folder import Folder
-from girder.plugins.wholetale.utils import getOrCreateRootFolder
 
 
 class AbstractVRResource(Resource):
+    root_tale_field = None
+
     def __init__(self, resourceName, rootDirName):
         Resource.__init__(self)
         self.resourceName = resourceName
@@ -27,10 +29,12 @@ class AbstractVRResource(Resource):
         self.route('PUT', (':id',), self.rename)
         self.route('DELETE', (':id',), self.delete)
 
-    def _getRootFromTale(self, tale: dict) -> dict:
-        global_root = getOrCreateRootFolder(self.rootDirName)
-        root = Folder().findOne({'parentId': global_root['_id'], 'name': str(tale['_id'])})
-        return root
+    def _getRootFromTale(self, tale: dict, user=None, level=AccessType.READ) -> dict:
+        if user:
+            kwargs = dict(user=user, level=level)
+        else:
+            kwargs = dict(force=True)
+        return Folder().load(tale[self.root_tale_field], exc=True, **kwargs)
 
     def _checkNameSanity(self, name: Optional[str], parentFolder: dict) -> None:
         if not name:
@@ -62,10 +66,10 @@ class AbstractVRResource(Resource):
         return (folder, dir)
 
     def clear(self, tale: dict) -> None:
-        root = self._getRootFromTale(tale)
-        subdirs = Folder().find({'parentId': root['_id']})
+        user = self.getCurrentUser()
+        root = self._getRootFromTale(tale, user=user, level=AccessType.ADMIN)
         n = 0
-        for v in subdirs:
+        for v in Folder().childFolders(root, "folder", user=user, level=AccessType.ADMIN):
             n += 1
             if 'fsPath' in v:
                 path = v['fsPath']
@@ -79,25 +83,41 @@ class AbstractVRResource(Resource):
     def rename(self, vrfolder: dict, newName: str) -> dict:
         if not newName:
             raise RestException('New name cannot be empty.', code=400)
-
-        root = Folder().load(vrfolder['parentId'], force=True)
+        user = self.getCurrentUser()
+        root = Folder().load(vrfolder['parentId'], user=user, level=AccessType.WRITE)
         self._checkNameSanity(newName, root)
 
         vrfolder.update({'name': newName})
-        Folder().save(vrfolder)
-
-        return vrfolder
+        return Folder().save(vrfolder)  # Filtering done by non abstract resource
 
     def load(self, vrfolder: dict) -> dict:
         raise NotImplementedError
 
-    def list(self, tale: dict, limit, offset, sort):
-        root = self._getRootFromTale(tale)
-        folders = Folder().find({'parentId': root['_id']}, limit=limit, sort=sort, offset=offset)
-        return list(folders)
+    def list(
+        self,
+        tale: dict,
+        user=None,
+        limit=0,
+        offset=0,
+        sort=None,
+        filters=None,
+        **kwargs
+    ):
+        root = self._getRootFromTale(tale, user=user, level=AccessType.READ)
+        return Folder().childFolders(
+            root,
+            "folder",
+            user=user,
+            limit=limit,
+            offset=offset,
+            sort=sort,
+            filters=filters,
+            **kwargs
+        )
 
     def exists(self, tale: dict, name: str):
-        root = self._getRootFromTale(tale)
+        user = self.getCurrentUser()
+        root = self._getRootFromTale(tale, user=user, level=AccessType.READ)
         obj = Folder().findOne({'parentId': root['_id'], 'name': name})
         if obj is None:
             return {'exists': False}

@@ -26,6 +26,8 @@ VERSION_NAME_FORMAT = '%c'
 
 
 class Version(AbstractVRResource):
+    root_tale_field = "versionsRootId"
+
     def __init__(self):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
@@ -107,8 +109,9 @@ class Version(AbstractVRResource):
     def create(self, tale: dict, name: str = None, force: bool = False) -> dict:
         if not name:
             name = self._generateName()
+        user = self.getCurrentUser()
 
-        root = self._getRootFromTale(tale)
+        root = self._getRootFromTale(tale, user=user, level=AccessType.WRITE)
         self._checkNameSanity(name, root)
 
         if not Version._setCriticalSectionFlag(root):
@@ -158,7 +161,7 @@ class Version(AbstractVRResource):
                        403)
     )
     def list(self, tale: dict, limit, offset, sort):
-        return super().list(tale, limit, offset, sort)
+        return super().list(tale, user=self.getCurrentUser(), limit=limit, offset=offset, sort=sort)
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
@@ -234,8 +237,8 @@ class Version(AbstractVRResource):
 
         try:
             dataSet = tale['dataSet']
-
-            taleWorkspaceDir = util.getTaleWorkspaceDirPath(tale)
+            workspace = Folder().load(tale["workspaceId"], force=True)
+            taleWorkspaceDir = Path(workspace["fsPath"])
 
             self.snapshot(last, oldVersion, oldDataset, dataSet, taleWorkspaceDir, newVersionDir,
                           newVersionFolder, force)
