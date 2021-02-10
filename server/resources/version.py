@@ -51,13 +51,15 @@ class Version(AbstractVRResource):
         .modelParam('id', 'The ID of version', model=Folder, level=AccessType.WRITE,
                     destName='vfolder')
         .param('name', 'The new name', required=True, dataType='string')
+        .param('allowRename', 'Allow to modify "name" if object with the same name'
+               'already exists.', required=False, dataType='boolean', default=False)
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Illegal file name', 400)
         .errorResponse('Name already exists', 409)
     )
-    def rename(self, vfolder: dict, name: str) -> dict:
-        return super().rename(vfolder, name)
+    def rename(self, vfolder: dict, name: str, allowRename: bool) -> dict:
+        return super().rename(vfolder, name, allow_rename=allowRename)
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(

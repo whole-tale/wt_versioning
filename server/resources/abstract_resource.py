@@ -94,12 +94,12 @@ class AbstractVRResource(Resource):
             logger.info('Directory not removed: %s' % path)
         return 'Deleted %s versions' % n
 
-    def rename(self, vrfolder: dict, newName: str) -> dict:
+    def rename(self, vrfolder: dict, newName: str, allow_rename: bool = False) -> dict:
         if not newName:
             raise RestException('New name cannot be empty.', code=400)
         user = self.getCurrentUser()
         root = Folder().load(vrfolder['parentId'], user=user, level=AccessType.WRITE)
-        self._checkNameSanity(newName, root)
+        newName = self._checkNameSanity(newName, root, allow_rename=allow_rename)
 
         vrfolder.update({'name': newName})
         return Folder().save(vrfolder)  # Filtering done by non abstract resource
