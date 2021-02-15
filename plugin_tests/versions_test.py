@@ -337,6 +337,7 @@ class VersionTestCase(base.TestCase):
             if key in (
                 "created",
                 "updated",
+                "restoredFrom",
             ):
                 continue
             try:
