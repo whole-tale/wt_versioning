@@ -367,7 +367,7 @@ class Version(AbstractVRResource):
         is the case if files are only modified through the WebDAV FS mounted in a tale container).
         """
         new_version_path = Path(new_version["fsPath"])
-        manifest = Manifest(tale, user, expand_folders=False)
+        manifest = Manifest(tale, user, expand_folders=False, versionId=new_version["_id"])
         with open((new_version_path / "manifest.json").as_posix(), "w") as fp:
             fp.write(manifest.dump_manifest())
 
