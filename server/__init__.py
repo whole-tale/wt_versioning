@@ -70,7 +70,9 @@ def load(info):
     resetCrashedCriticalSections()
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
-    Tale().exposeFields(level=AccessType.READ, fields={"versionsRootId", "runsRootId"})
+    Tale().exposeFields(
+        level=AccessType.READ, fields={"versionsRootId", "runsRootId", "restoredFrom"}
+    )
 
-    info['apiRoot'].version = Version()
+    info['apiRoot'].version = Version(info["apiRoot"].tale)
     info['apiRoot'].run = Run()

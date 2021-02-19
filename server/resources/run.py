@@ -244,7 +244,7 @@ class Run(AbstractVRResource):
         if not name:
             name = self._generateName()
 
-        (runFolder, runDir) = self._createSubdir(rootDir, root, name)
+        runFolder = self._createSubdir(rootDir, root, name, user=self.getCurrentUser())
 
         runFolder['runVersionId'] = version['_id']
         runFolder['runStatus'] = RunStatus.UNKNOWN.code
@@ -258,7 +258,7 @@ class Run(AbstractVRResource):
         #  .status
         #  .stdout (created using stream() above)
         #  .stderr (-''-)
-
+        runDir = Path(runFolder["fsPath"])
         (runDir / 'version').symlink_to('../../Versions/%s' % version['_id'], True)
         (runDir / 'data').symlink_to('version/data', True)
         (runDir / 'workspace').symlink_to('version/workspace', True)

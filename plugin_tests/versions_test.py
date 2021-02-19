@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import pathlib
@@ -75,6 +76,52 @@ class VersionTestCase(base.TestCase):
             ),
         )
 
+        self.image2 = Image().createImage(
+            name="test other name",
+            creator=self.user_one,
+            public=True,
+            config=dict(
+                template="base.tpl",
+                buildpack="OtherBuildPack",
+                user="someUser",
+                port=8888,
+                urlPath="",
+            ),
+        )
+
+        self.data_map = [
+            {
+                "dataId": "resource_map_doi:10.5065/D6862DM8",
+                "doi": "10.5065/D6862DM8",
+                "name": "Humans and Hydrology at High Latitudes: Water Use Information",
+                "repository": "DataONE",
+                "size": 28_856_295,
+                "tale": False,
+            },
+            {
+                "dataId": (
+                    "https://dataverse.harvard.edu/dataset.xhtml?"
+                    "persistentId=doi:10.7910/DVN/Q5PV4U"
+                ),
+                "doi": "doi:10.7910/DVN/Q5PV4U",
+                "name": (
+                    "Replication Data for: Misgovernance and Human Rights: "
+                    "The Case of Illegal Detention without Intent"
+                ),
+                "repository": "Dataverse",
+                "size": 6_326_512,
+                "tale": False,
+            },
+        ]
+
+        resp = self.request(
+            path="/dataset/register",
+            method="POST",
+            params={"dataMap": json.dumps(self.data_map)},
+            user=self.user_one,
+        )
+        self.assertStatusOk(resp)
+
     def _create_example_tale(self, dataset=None):
         if dataset is None:
             dataset = []
@@ -104,7 +151,8 @@ class VersionTestCase(base.TestCase):
             body=json.dumps(tale),
         )
         self.assertStatusOk(resp)
-        return resp.json
+        tale = resp.json
+        return tale
 
     def _remove_example_tale(self, tale, user=None):
         if not user:
@@ -117,7 +165,7 @@ class VersionTestCase(base.TestCase):
     def testBasicVersionOps(self):
         from girder.plugins.wt_versioning.constants import PluginSettings
 
-        tale = self._create_example_tale()
+        tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
 
         file1_content = b"Hello World!"
@@ -166,12 +214,34 @@ class VersionTestCase(base.TestCase):
         with open(nested_file.as_posix(), "wb") as f:
             f.write(file2_content)
 
+        # Make some mods to Tale itself
+        first_version_tale = copy.deepcopy(tale)
+        tale = Tale().load(tale["_id"], force=True)
+        tale["dataSet"] = self.get_dataset([1])
+        tale["authors"].append(
+            {
+                "firstName": "Craig",
+                "lastName": "Willis",
+                "orcid": "https://orcid.org/0000-0002-6148-7196",
+            }
+        )
+        tale.update(
+            {
+                "category": "rocket science",
+                "config": {"foo": "bar"},
+                "description": "A better description",
+                "imageId": self.image2["_id"],
+                "title": "New better title",
+            }
+        )
+        tale = Tale().save(tale)
+
         # Try to create a 2nd version, but using old name (should fail)
         resp = self.request(
             path="/version",
             method="POST",
             user=self.user_one,
-            params={"name": "First Version", "taleId": tale["_id"]},
+            params={"name": "First Version", "taleId": str(tale["_id"])},
         )
         self.assertStatus(resp, 409)
         self.assertEqual(
@@ -253,6 +323,36 @@ class VersionTestCase(base.TestCase):
             },
         )
 
+        # Restore First Version
+        resp = self.request(
+            method="PUT",
+            user=self.user_one,
+            path=f"/tale/{tale['_id']}/restore",
+            params={"versionId": version["_id"]},
+        )
+        self.assertStatusOk(resp)
+        restored_tale = resp.json
+
+        for key in restored_tale.keys():
+            if key in (
+                "created",
+                "updated",
+                "restoredFrom",
+            ):
+                continue
+            try:
+                self.assertEqual(restored_tale[key], first_version_tale[key])
+            except AssertionError:
+                print(key)
+                raise
+
+        workspace = Folder().load(restored_tale["workspaceId"], force=True)
+        workspace_path = pathlib.Path(workspace["fsPath"])
+        w_should_be_a_file = workspace_path / file1_name
+        self.assertTrue(w_should_be_a_file.is_file())
+        w_should_not_be_a_file = workspace_path / dir_name / file2_name
+        self.assertFalse(w_should_not_be_a_file.is_file())
+
         # Remove and see if it's gone
         resp = self.request(
             path=f"/version/{new_version['_id']}", method="DELETE", user=self.user_one
@@ -273,7 +373,12 @@ class VersionTestCase(base.TestCase):
             path="/version",
             method="POST",
             user=self.user_one,
-            params={"name": "First Version", "taleId": tale["_id"], "allowRename": True},
+            params={
+                "name": "First Version",
+                "taleId": tale["_id"],
+                "allowRename": True,
+                "force": True
+            },
         )
         self.assertStatusOk(resp)
         self.assertEqual(resp.json["name"], "First Version (1)")
@@ -281,34 +386,20 @@ class VersionTestCase(base.TestCase):
         # Clean up
         self._remove_example_tale(tale)
 
-    def testDatasetHandling(self):
-        user_data_map = [
-            {
-                "dataId": "resource_map_doi:10.5065/D6862DM8",
-                "doi": "10.5065/D6862DM8",
-                "name": "Humans and Hydrology at High Latitudes: Water Use Information",
-                "repository": "DataONE",
-                "size": 28_856_295,
-            }
-        ]
-
-        resp = self.request(
-            path="/dataset/register",
-            method="POST",
-            params={"dataMap": json.dumps(user_data_map)},
-            user=self.user_one,
-        )
-        self.assertStatusOk(resp)
-
+    def get_dataset(self, indices):
         user = User().load(self.user_one["_id"], force=True)
-        dataset = [
-            {
-                "_modelType": "folder",
-                "itemId": str(user["myData"][0]),
-                "mountPath": user_data_map[0]["name"],
-            }
-        ]
-        tale = self._create_example_tale(dataset=dataset)
+        dataSet = []
+        for i in indices:
+            _id = user["myData"][i]
+            folder = Folder().load(_id, force=True)
+            dataSet.append(
+                {"_modelType": "folder", "itemId": str(_id), "mountPath": folder["name"]}
+            )
+        return dataSet
+
+    def testDatasetHandling(self):
+
+        tale = self._create_example_tale(dataset=self.get_dataset([0]))
         resp = self.request(
             path="/version",
             method="POST",
@@ -324,6 +415,6 @@ class VersionTestCase(base.TestCase):
         )
         self.assertStatusOk(resp)
         self.assertTrue(len(resp.json), 1)
-        self.assertEqual(resp.json[0]["itemId"], dataset[0]["itemId"])
+        self.assertEqual(resp.json[0]["itemId"], self.get_dataset([0])[0]["itemId"])
 
         self._remove_example_tale(tale)
