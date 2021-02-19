@@ -36,7 +36,12 @@ class AbstractVRResource(Resource):
             kwargs = dict(force=True)
         return Folder().load(tale[self.root_tale_field], exc=True, **kwargs)
 
-    def _checkNameSanity(self, name: Optional[str], parentFolder: dict) -> None:
+    def _checkNameSanity(
+        self,
+        name: Optional[str],
+        parentFolder: dict,
+        allow_rename: bool = False,
+    ) -> None:
         if not name:
             raise RestException('Name cannot be empty.', code=400)
 
@@ -45,8 +50,17 @@ class AbstractVRResource(Resource):
         except pathvalidate.ValidationError:
             raise RestException('Invalid file name: ' + name, code=400)
 
-        if Folder().findOne({'parentId': parentFolder['_id'], 'name': name}) is not None:
+        q = {'parentId': parentFolder['_id'], 'name': name}
+        if not allow_rename and Folder().findOne(q, fields=["_id"]):
             raise RestException('Name already exists: ' + name, code=409)
+
+        n = 0
+        while Folder().findOne(q, fields=["_id"]):
+            n += 1
+            q["name"] = f"{name} ({n})"
+            if n > 100:
+                break
+        return q["name"]
 
     def _createSubdir(self, rootDir: Path, rootFolder: dict, name: str) -> Tuple[dict, Path]:
         """Create both Girder folder and corresponding directory. The name is stored in the Girder
@@ -80,12 +94,12 @@ class AbstractVRResource(Resource):
             logger.info('Directory not removed: %s' % path)
         return 'Deleted %s versions' % n
 
-    def rename(self, vrfolder: dict, newName: str) -> dict:
+    def rename(self, vrfolder: dict, newName: str, allow_rename: bool = False) -> dict:
         if not newName:
             raise RestException('New name cannot be empty.', code=400)
         user = self.getCurrentUser()
         root = Folder().load(vrfolder['parentId'], user=user, level=AccessType.WRITE)
-        self._checkNameSanity(newName, root)
+        newName = self._checkNameSanity(newName, root, allow_rename=allow_rename)
 
         vrfolder.update({'name': newName})
         return Folder().save(vrfolder)  # Filtering done by non abstract resource
