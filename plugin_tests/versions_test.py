@@ -373,7 +373,12 @@ class VersionTestCase(base.TestCase):
             path="/version",
             method="POST",
             user=self.user_one,
-            params={"name": "First Version", "taleId": tale["_id"], "allowRename": True},
+            params={
+                "name": "First Version",
+                "taleId": tale["_id"],
+                "allowRename": True,
+                "force": True
+            },
         )
         self.assertStatusOk(resp)
         self.assertEqual(resp.json["name"], "First Version (1)")
