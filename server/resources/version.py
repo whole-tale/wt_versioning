@@ -17,7 +17,7 @@ from girder.exceptions import RestException
 from girder.models.folder import Folder
 from girder.plugins.wt_data_manager.models.session import Session
 from girder.plugins.wholetale.lib.manifest import Manifest
-from girder.plugins.wholetale.lib.manifest_parser import ManifestParser as mp
+from girder.plugins.wholetale.lib.manifest_parser import ManifestParser
 from girder.plugins.wholetale.models.tale import Tale
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants
@@ -76,10 +76,8 @@ class Version(AbstractVRResource):
                        'respective version folder.', 403)
     )
     def getDataset(self, version: dict) -> dict:
-        version_path = Path(version["fsPath"])
-        with open((version_path / "manifest.json").as_posix(), "r") as fp:
-            manifest = json.load(fp)
-        dataSet = mp.get_dataset_from_manifest(manifest)
+        mp = ManifestParser(Path(version["fsPath"]) / "manifest.json")
+        dataSet = mp.get_dataset()
         Session().loadObjects(dataSet)
         return dataSet
 
