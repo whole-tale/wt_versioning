@@ -418,3 +418,24 @@ class VersionTestCase(base.TestCase):
         self.assertEqual(resp.json[0]["itemId"], self.get_dataset([0])[0]["itemId"])
 
         self._remove_example_tale(tale)
+
+    def test_force_version(self):
+
+        tale = self._create_example_tale(dataset=self.get_dataset([0]))
+        # Export the Tale. This should trigger the event to create the new version
+        resp = self.request(
+            path="/export",
+            method="GET",
+            user=self.user_one,
+            params={"id": tale["_id"]},
+        )
+        # Get the versions for this Tale; there should only by a single one
+        # triggered by the export event
+        resp = self.request(
+            path="/version",
+            method="GET",
+            user=self.user_one,
+            params={"taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(len(resp.json), 1)

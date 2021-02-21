@@ -8,7 +8,7 @@ from typing import Optional
 
 import pymongo
 
-from girder import logger
+from girder import events, logger
 from girder.api import access
 from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
@@ -36,6 +36,8 @@ class Version(AbstractVRResource):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
         tale_node.route("PUT", (":id", "restore"), self.restore)
+        events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.force_version)
+        events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.force_version)
 
     @access.user
     @autoDescribeRoute(
@@ -249,6 +251,14 @@ class Version(AbstractVRResource):
     def exists(self, tale: dict, name: str):
         return super().exists(tale, name)
 
+    @access.user(scope=TokenScope.DATA_WRITE)
+    def force_version(self, event: events.Event):
+        params = event.info.get("params", {})
+        taleId = event.info.get("id")
+        version_id = params.get("versionId")
+        if not version_id:
+            self.create(taleId=taleId, params={}, force=True)
+
     @classmethod
     def _incrementReferenceCount(cls, vfolder):
         cls._updateReferenceCount(vfolder, 1)
@@ -365,7 +375,7 @@ class Version(AbstractVRResource):
         is the case if files are only modified through the WebDAV FS mounted in a tale container).
         """
         new_version_path = Path(new_version["fsPath"])
-        manifest = Manifest(tale, user, expand_folders=False, versionId=new_version["_id"])
+        manifest = Manifest(tale, user, version_id=new_version["_id"], expand_folders=False)
         with open((new_version_path / "manifest.json").as_posix(), "w") as fp:
             fp.write(manifest.dump_manifest())
 
