@@ -420,6 +420,16 @@ class VersionTestCase(base.TestCase):
 
     def test_force_version(self):
         tale = self._create_example_tale(dataset=self.get_dataset([0]))
+        # Check that the tale has no versions.
+        resp = self.request(
+            path="/version",
+            method="GET",
+            user=self.user_one,
+            params={"taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json, [])
+
         # Export the Tale. This should trigger the event to create the new version
         resp = self.request(
             path=f"/tale/{tale['_id']}/export",
@@ -428,6 +438,7 @@ class VersionTestCase(base.TestCase):
             isJson=False,
         )
         self.assertStatusOk(resp)
+
         # Get the versions for this Tale; there should only by a single one
         # triggered by the export event
         resp = self.request(
