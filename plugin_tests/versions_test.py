@@ -334,11 +334,7 @@ class VersionTestCase(base.TestCase):
         restored_tale = resp.json
 
         for key in restored_tale.keys():
-            if key in (
-                "created",
-                "updated",
-                "restoredFrom",
-            ):
+            if key in ("created", "updated", "restoredFrom"):
                 continue
             try:
                 self.assertEqual(restored_tale[key], first_version_tale[key])
@@ -377,7 +373,7 @@ class VersionTestCase(base.TestCase):
                 "name": "First Version",
                 "taleId": tale["_id"],
                 "allowRename": True,
-                "force": True
+                "force": True,
             },
         )
         self.assertStatusOk(resp)
@@ -393,12 +389,15 @@ class VersionTestCase(base.TestCase):
             _id = user["myData"][i]
             folder = Folder().load(_id, force=True)
             dataSet.append(
-                {"_modelType": "folder", "itemId": str(_id), "mountPath": folder["name"]}
+                {
+                    "_modelType": "folder",
+                    "itemId": str(_id),
+                    "mountPath": folder["name"],
+                }
             )
         return dataSet
 
     def testDatasetHandling(self):
-
         tale = self._create_example_tale(dataset=self.get_dataset([0]))
         resp = self.request(
             path="/version",
@@ -420,15 +419,15 @@ class VersionTestCase(base.TestCase):
         self._remove_example_tale(tale)
 
     def test_force_version(self):
-
         tale = self._create_example_tale(dataset=self.get_dataset([0]))
         # Export the Tale. This should trigger the event to create the new version
         resp = self.request(
-            path="/export",
+            path=f"/tale/{tale['_id']}/export",
             method="GET",
             user=self.user_one,
-            params={"id": tale["_id"]},
+            isJson=False,
         )
+        self.assertStatusOk(resp)
         # Get the versions for this Tale; there should only by a single one
         # triggered by the export event
         resp = self.request(
@@ -439,3 +438,4 @@ class VersionTestCase(base.TestCase):
         )
         self.assertStatusOk(resp)
         self.assertTrue(len(resp.json), 1)
+        self._remove_example_tale(tale)
