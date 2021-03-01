@@ -1,4 +1,3 @@
-from bson import ObjectId
 import json
 import os
 import shutil
@@ -7,21 +6,22 @@ from pathlib import Path
 from typing import Optional
 
 import pymongo
-
+from bson import ObjectId
 from girder import events, logger
 from girder.api import access
-from girder.api.describe import autoDescribeRoute, Description
+from girder.api.describe import Description, autoDescribeRoute
 from girder.api.rest import filtermodel
 from girder.constants import AccessType, TokenScope
 from girder.exceptions import RestException
 from girder.models.folder import Folder
-from girder.plugins.wt_data_manager.models.session import Session
 from girder.plugins.wholetale.lib.manifest import Manifest
 from girder.plugins.wholetale.lib.manifest_parser import ManifestParser
 from girder.plugins.wholetale.models.tale import Tale
-from .abstract_resource import AbstractVRResource
+from girder.plugins.wt_data_manager.models.session import Session
+
 from ..constants import Constants
 from ..lib import util
+from .abstract_resource import AbstractVRResource
 
 FIELD_CRITICAL_SECTION_FLAG = 'versionsCriticalSectionFlag'
 FIELD_REFERENCE_COUNTER = 'versionsRefCount'
@@ -36,8 +36,8 @@ class Version(AbstractVRResource):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
         tale_node.route("PUT", (":id", "restore"), self.restore)
-        events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.force_version)
-        events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.force_version)
+        events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.ensure_version)
+        events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
 
     @access.user
     @autoDescribeRoute(
@@ -252,12 +252,23 @@ class Version(AbstractVRResource):
         return super().exists(tale, name)
 
     @access.user(scope=TokenScope.DATA_WRITE)
-    def force_version(self, event: events.Event):
+    def ensure_version(self, event: events.Event):
         params = event.info.get("params", {})
         taleId = event.info.get("id")
         version_id = params.get("versionId")
         if not version_id:
-            self.create(taleId=taleId, params={}, force=True)
+            try:
+                version = self.create(taleId=taleId, allowRename=True, params={})
+                # Above obj is filtered model so we need to reload it...
+                version = Folder().load(version["_id"], force=True)
+            except RestException as exc:
+                if exc.code == 303:
+                    version = Folder().load(exc.extra, force=True)
+                else:
+                    raise
+            # We're using 'updated' field to bump the version to the top of
+            # Folder().list(). We're gonna update it either way later on.
+            Folder().updateFolder(version)
 
     @classmethod
     def _incrementReferenceCount(cls, vfolder):
@@ -320,7 +331,7 @@ class Version(AbstractVRResource):
             if not force and self._is_same(tale, version, user) and \
                     self._sameTree(oldWorkspace, crtWorkspace):
                 assert version is not None
-                raise RestException('Not modified', 303, str(version['_id']))
+                raise RestException('Not modified', code=303, extra=str(version['_id']))
 
         new_version = self._createSubdir(versionsDir, versionsRoot, name, user=user)
 
@@ -432,7 +443,7 @@ class Version(AbstractVRResource):
 
         if self._sameTaleMetadata(tale_restored_from_ver, tale_restored_from_wrk) and \
                 self._sameTree(version_workspace_path, tale_workspace_path):
-            raise RestException('Not modified', 303, str(version["_id"]))
+            raise RestException('Not modified', code=303, extra=str(version["_id"]))
 
     def _sameTaleMetadata(self, old: Optional[dict], crt: dict):
         if old is None:

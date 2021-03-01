@@ -430,23 +430,26 @@ class VersionTestCase(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json, [])
 
-        # Export the Tale. This should trigger the event to create the new version
-        resp = self.request(
-            path=f"/tale/{tale['_id']}/export",
-            method="GET",
-            user=self.user_one,
-            isJson=False,
-        )
-        self.assertStatusOk(resp)
+        # We're doing it twice to verify that only one version is created
+        # if there are no changes to the Tale.
+        for _ in range(2):
+            # Export the Tale. This should trigger the event to create the new version
+            resp = self.request(
+                path=f"/tale/{tale['_id']}/export",
+                method="GET",
+                user=self.user_one,
+                isJson=False,
+            )
+            self.assertStatusOk(resp)
 
-        # Get the versions for this Tale; there should only by a single one
-        # triggered by the export event
-        resp = self.request(
-            path="/version",
-            method="GET",
-            user=self.user_one,
-            params={"taleId": tale["_id"]},
-        )
-        self.assertStatusOk(resp)
-        self.assertTrue(len(resp.json), 1)
+            # Get the versions for this Tale; there should only by a single one
+            # triggered by the export event
+            resp = self.request(
+                path="/version",
+                method="GET",
+                user=self.user_one,
+                params={"taleId": tale["_id"]},
+            )
+            self.assertStatusOk(resp)
+            self.assertTrue(len(resp.json), 1)
         self._remove_example_tale(tale)
