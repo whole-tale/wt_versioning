@@ -66,7 +66,17 @@ class Version(AbstractVRResource):
         .errorResponse('Name already exists', 409)
     )
     def rename(self, vfolder: dict, name: str, allowRename: bool) -> dict:
-        return super().rename(vfolder, name, allow_rename=allowRename)
+        renamed_version = super().rename(vfolder, name, allow_rename=allowRename)
+        user = self.getCurrentUser()
+
+        root = Folder().load(vfolder["parentId"], user=user, level=AccessType.WRITE)
+        tale = Tale().load(root["taleId"], user=user, level=AccessType.WRITE)
+        manifest = Manifest(tale, user, versionId=renamed_version["_id"], expand_folders=False)
+        version_path = Path(renamed_version["fsPath"])
+        with open((version_path / "manifest.json").as_posix(), "w") as fp:
+            fp.write(manifest.dump_manifest())
+        Tale().updateTale(Tale().load(root["taleId"], force=True))
+        return renamed_version
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
@@ -140,6 +150,7 @@ class Version(AbstractVRResource):
         finally:
             # probably need a better way to deal with hard crashes here
             Version._resetCriticalSectionFlag(root)
+            Tale().updateTale(tale)
 
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel(model="tale", plugin="wholetale")
@@ -223,6 +234,7 @@ class Version(AbstractVRResource):
         Folder().remove(vfolder)
 
         shutil.move(path.as_posix(), trashDir)
+        Tale().updateTale(Tale().load(root["taleId"], force=True))
 
     @access.user(TokenScope.DATA_READ)
     @filtermodel('folder')

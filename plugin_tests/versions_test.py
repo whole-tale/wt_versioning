@@ -298,6 +298,7 @@ class VersionTestCase(base.TestCase):
             path=f"/version/{new_version['_id']}", method="GET", user=self.user_one
         )
         self.assertStatusOk(resp)
+        new_version["updated"] = resp.json["updated"]  # There's a small drift between those
         self.assertEqual(new_version, resp.json)
 
         # Check if data is where it's supposed to be
@@ -334,7 +335,7 @@ class VersionTestCase(base.TestCase):
         restored_tale = resp.json
 
         for key in restored_tale.keys():
-            if key in ("created", "updated", "restoredFrom"):
+            if key in ("created", "updated", "restoredFrom", "imageInfo"):
                 continue
             try:
                 self.assertEqual(restored_tale[key], first_version_tale[key])
