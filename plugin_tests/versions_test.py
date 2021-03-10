@@ -31,6 +31,17 @@ def tearDownModule():
 
 
 class VersionTestCase(BaseTestCase):
+
+    def _compare_tales(self, restored_tale, original_tale):
+        for key in restored_tale.keys():
+            if key in ("created", "updated", "restoredFrom", "imageInfo"):
+                continue
+            try:
+                self.assertEqual(restored_tale[key], original_tale[key])
+            except AssertionError:
+                print(key)
+                raise
+
     def testBasicVersionOps(self):
         from girder.plugins.wt_versioning.constants import PluginSettings
 
@@ -214,6 +225,16 @@ class VersionTestCase(BaseTestCase):
             },
         )
 
+        # View First Version
+        resp = self.request(
+            method="GET",
+            user=self.user_one,
+            path=f"/tale/{tale['_id']}/restore",
+            params={"versionId": version["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self._compare_tales(resp.json, first_version_tale)
+
         # Restore First Version
         resp = self.request(
             method="PUT",
@@ -223,6 +244,7 @@ class VersionTestCase(BaseTestCase):
         )
         self.assertStatusOk(resp)
         restored_tale = resp.json
+        self._compare_tales(restored_tale, first_version_tale)
 
         for key in restored_tale.keys():
             if key in ("created", "updated", "restoredFrom", "imageInfo"):
