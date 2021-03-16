@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import pathlib
+import time
 from girder.models.folder import Folder
 from girder.models.setting import Setting
 from girder.models.user import User
@@ -11,6 +12,7 @@ from tests import base
 
 Image = None
 Tale = None
+TaleStatus = None
 
 
 def setUpModule():
@@ -20,9 +22,10 @@ def setUpModule():
     base.enabledPlugins.append("wt_versioning")
     base.startServer()
 
-    global Image, Tale
+    global Image, Tale, TaleStatus
     from girder.plugins.wholetale.models.image import Image
     from girder.plugins.wholetale.models.tale import Tale
+    from girder.plugins.wholetale.constants import TaleStatus
 
 
 def tearDownModule():
@@ -298,7 +301,9 @@ class VersionTestCase(base.TestCase):
             path=f"/version/{new_version['_id']}", method="GET", user=self.user_one
         )
         self.assertStatusOk(resp)
-        new_version["updated"] = resp.json["updated"]  # There's a small drift between those
+        new_version["updated"] = resp.json[
+            "updated"
+        ]  # There's a small drift between those
         self.assertEqual(new_version, resp.json)
 
         # Check if data is where it's supposed to be
@@ -379,6 +384,50 @@ class VersionTestCase(base.TestCase):
         )
         self.assertStatusOk(resp)
         self.assertEqual(resp.json["name"], "First Version (1)")
+
+        # Test copying Tale
+        # 1. Make it public
+        resp = self.request(
+            path=f"/tale/{tale['_id']}/access", method="GET", user=self.user_one
+        )
+        self.assertStatusOk(resp)
+        tale_access = resp.json
+
+        resp = self.request(
+            path=f"/tale/{tale['_id']}/access",
+            method="PUT",
+            user=self.user_one,
+            params={"access": json.dumps(tale_access), "public": True},
+        )
+        self.assertStatusOk(resp)
+
+        # 2. Perform copy as user2
+        resp = self.request(
+            path=f"/tale/{tale['_id']}/copy", method="POST", user=self.user_two
+        )
+        self.assertStatusOk(resp)
+        copied_tale = resp.json
+
+        retries = 10
+        while copied_tale["status"] < TaleStatus.READY or retries > 0:
+            time.sleep(0.5)
+            resp = self.request(
+                path=f"/tale/{copied_tale['_id']}", method="GET", user=self.user_two
+            )
+            self.assertStatusOk(resp)
+            copied_tale = resp.json
+            retries -= 1
+        self.assertEqual(copied_tale["status"], TaleStatus.READY)
+
+        # 3. Check that copied Tale has two versions
+        resp = self.request(
+            path="/version",
+            method="GET",
+            user=self.user_two,
+            params={"taleId": copied_tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(len(resp.json), 2)
 
         # Clean up
         self._remove_example_tale(tale)
