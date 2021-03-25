@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from girder.plugins.wholetale.models.tale import Tale
+import copy
+import shutil
 
 from girder import events
 from girder.constants import AccessType, SettingDefault
 from girder.models.folder import Folder
 from girder.models.user import User
 from girder.utility import setting_utilities
+from girder.plugins.wholetale.lib.manifest import Manifest
+from girder.plugins.wholetale.models.tale import Tale
 from .resources.version import Version, FIELD_CRITICAL_SECTION_FLAG
 from .resources.run import Run
 from .constants import PluginSettings, Constants
@@ -64,12 +67,51 @@ def resetCrashedCriticalSections():
     )
 
 
+def copyVersions(event: events.Event) -> None:
+    old_tale, new_tale = event.info
+    creator = User().load(new_tale["creatorId"], force=True)
+    old_root = Folder().load(
+        old_tale["versionsRootId"], user=creator, level=AccessType.READ
+    )
+    new_root = Folder().load(
+        new_tale["versionsRootId"], user=creator, level=AccessType.WRITE
+    )
+    old_root_path = util.getTaleVersionsDirPath(old_tale)
+    new_root_path = util.getTaleVersionsDirPath(new_tale)
+    for src_version in Folder().childFolders(old_root, "folder", user=creator):
+        new_version = Folder().createFolder(
+            new_root, src_version["name"], creator=creator
+        )
+        filtered_folder = Folder().filter(new_version, creator)
+        for key in src_version:
+            if key not in filtered_folder and key not in new_version:
+                new_version[key] = copy.deepcopy(src_version[key])
+
+        src_version_path = old_root_path / str(src_version["_id"])
+        new_version_path = new_root_path / str(new_version["_id"])
+        new_version_path.mkdir(parents=True)
+        new_version.update(
+            {"fsPath": new_version_path.absolute().as_posix(), "isMapping": True}
+        )
+        new_version = Folder().save(new_version, validate=False, triggerEvents=False)
+        shutil.copytree(src_version_path, new_version_path, dirs_exist_ok=True)
+        manifest = Manifest(
+            new_tale, creator, versionId=new_version["_id"], expand_folders=False
+        )
+        with open(new_version_path / "manifest.json", "w") as fp:
+            fp.write(manifest.dump_manifest())
+
+    # update the time on root
+    Folder().updateFolder(new_root)
+
+
 def load(info):
     setDefaults()
     createIndex()
     resetCrashedCriticalSections()
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
+    events.bind('wholetale.tale.copied', 'wt_versioning', copyVersions)
     Tale().exposeFields(
         level=AccessType.READ, fields={"versionsRootId", "runsRootId", "restoredFrom"}
     )
