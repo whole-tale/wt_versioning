@@ -91,7 +91,12 @@ def copyVersions(event: events.Event) -> None:
         new_version_path = new_root_path / str(new_version["_id"])
         new_version_path.mkdir(parents=True)
         new_version.update(
-            {"fsPath": new_version_path.absolute().as_posix(), "isMapping": True}
+            {
+                "fsPath": new_version_path.absolute().as_posix(),
+                "isMapping": True,
+                "created": src_version["created"],  # preserve timestamps
+                "updated": src_version["updated"],
+            }
         )
         new_version = Folder().save(new_version, validate=False, triggerEvents=False)
         shutil.copytree(src_version_path, new_version_path, dirs_exist_ok=True)
