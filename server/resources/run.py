@@ -259,9 +259,14 @@ class Run(AbstractVRResource):
         #  .stdout (created using stream() above)
         #  .stderr (-''-)
         runDir = Path(runFolder["fsPath"])
-        (runDir / 'version').symlink_to('../../Versions/%s' % version['_id'], True)
+        tale_id = runDir.parts[-2]
+        # TODO: a lot assumptions hardcoded below...
+        (runDir / 'version').symlink_to(
+            f"../../../../versions/{tale_id[:2]}/{tale_id}/{version['_id']}", True
+        )
         (runDir / 'data').symlink_to('version/data', True)
-        (runDir / 'workspace').symlink_to('version/workspace', True)
+        # (runDir / 'workspace').symlink_to('version/workspace', True)  # used to be...
+        shutil.copytree((runDir / "version" / "workspace"), (runDir / "workspace"))
         (runDir / 'results').mkdir()
         self._write_status(runDir, RunStatus.UNKNOWN)
 

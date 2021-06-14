@@ -292,7 +292,7 @@ class Version(AbstractVRResource):
 
     @classmethod
     def _updateReferenceCount(cls, vfolder: dict, n: int):
-        root = Folder().load(vfolder['parentId'])
+        root = Folder().load(vfolder['parentId'], force=True)
         cls._setCriticalSectionFlag(root)
         try:
             vfolder = Folder().load(vfolder['_id'], force=True)
