@@ -8,7 +8,11 @@ from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
 from girder.constants import AccessType, TokenScope
 from girder.models.folder import Folder
+from girder.plugins.models.job import Job
 from girder.plugins.wholetale.models.tale import Tale
+from girder.models.token import Token
+from girder.plugins.wholetale.utils import init_progress
+from gwvolman.tasks import recorded_run, RECORDED_RUN_STEP_TOTAL
 from .version import Version
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants, RunStatus, RunState
@@ -26,6 +30,7 @@ class Run(AbstractVRResource):
         super().__init__('run', Constants.RUNS_ROOT_DIR_NAME)
         self.route('PATCH', (':id', 'status'), self.setStatus)
         self.route('GET', (':id', 'status'), self.status)
+        self.route('POST', (':id', 'start'), self.startRun)
 
     @access.user()
     @filtermodel('folder')
@@ -230,3 +235,39 @@ class Run(AbstractVRResource):
     def _generateName(self):
         now = datetime.now()
         return now.strftime(RUN_NAME_FORMAT)
+
+    @access.user
+    @autoDescribeRoute(
+        Description('Start the recorded_run job')
+        .modelParam('id', 'The ID of a run.', model=Folder, level=AccessType.WRITE,
+                    destName='run')
+        .errorResponse('Access was denied (if current user does not have write access to '
+                       'this run)', 403)
+    )
+    def startRun(self, run):
+        user = self.getCurrentUser()
+
+        runRoot = Folder().load(run['parentId'], user=user, level=AccessType.WRITE)
+        tale = Tale().load(runRoot['meta']['taleId'], user=user, level=AccessType.READ)
+
+        resource = {
+            'type': 'wt_recorded_run',
+            'tale_id': tale['_id'],
+            'tale_title': tale['title']
+        }
+
+        token = Token().createToken(user=user, days=0.5)
+
+        notification = init_progress(
+            resource, user, 'Recorded run',
+            'Initializing', RECORDED_RUN_STEP_TOTAL)
+
+        rrTask = recorded_run.signature(
+            args=[str(run['_id']), str(tale['_id'])],
+            girder_job_other_fields={
+                'wt_notification_id': str(notification['_id']),
+            },
+            girder_client_token=str(token['_id']),
+        ).apply_async()
+
+        return Job().filter(rrTask.job, user=user)
