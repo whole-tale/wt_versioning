@@ -266,7 +266,11 @@ class Run(AbstractVRResource):
         )
         (runDir / 'data').symlink_to('version/data', True)
         # (runDir / 'workspace').symlink_to('version/workspace', True)  # used to be...
-        shutil.copytree((runDir / "version" / "workspace"), (runDir / "workspace"))
+        self._snapshotRecursive(
+            None,
+            (runDir / "version" / "workspace"),
+            (runDir / "workspace")
+        )
         (runDir / 'results').mkdir()
         self._write_status(runDir, RunStatus.UNKNOWN)
 

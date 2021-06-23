@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import shutil
 from typing import Optional
 
 import pathvalidate
@@ -141,3 +142,30 @@ class AbstractVRResource(Resource):
             return {'exists': False}
         else:
             return {'exists': True, 'obj': Folder().filter(obj, self.getCurrentUser())}
+
+    def _snapshotRecursive(self, old: Optional[Path], crt: Path, new: Path) -> None:
+        for c in crt.iterdir():
+            newc = new / c.name
+            oldc = None if old is None else old / c.name
+            crtc = crt / c.name
+
+            if oldc is not None:
+                if not oldc.exists():
+                    oldc = None
+                else:
+                    if crtc.is_dir() != oldc.is_dir():
+                        # either oldc was a dir and is now a file or the other way around
+                        oldc = None
+
+            if c.is_dir():
+                newc.mkdir()
+                self._snapshotRecursive(oldc, crtc, newc)
+            else:
+                crtcstr = crtc.absolute().as_posix()
+                newcstr = newc.absolute().as_posix()
+                try:
+                    os.link(crtcstr, newcstr)
+                except:  # noqa: E722
+                    logger.warn('link %s -> %s' % (crtcstr, newcstr))
+                    raise
+                shutil.copystat(crtcstr, newcstr)
