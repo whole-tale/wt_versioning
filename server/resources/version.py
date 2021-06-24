@@ -38,17 +38,6 @@ class Version(AbstractVRResource):
         events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.ensure_version)
         events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
 
-    @access.user
-    @autoDescribeRoute(
-        Description('Clears all versions from a tale, but does not delete the respective '
-                    'directories on disk. This is an administrative operation and should not be'
-                    'used under normal circumstances.')
-        .modelParam('taleId', 'The ID of the tale for which the versions should be cleared',
-                    model=Tale, level=AccessType.ADMIN, destName='tale', paramType='query')
-    )
-    def clear(self, tale: dict) -> None:
-        super().clear(tale)
-
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
