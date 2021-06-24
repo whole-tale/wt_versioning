@@ -265,7 +265,7 @@ class Run(AbstractVRResource):
             f"../../../../versions/{tale_id[:2]}/{tale_id}/{version['_id']}", True
         )
         (runDir / 'data').symlink_to('version/data', True)
-        # (runDir / 'workspace').symlink_to('version/workspace', True)  # used to be...
+        (runDir / 'workspace').mkdir()
         self._snapshotRecursive(
             None,
             (runDir / "version" / "workspace"),
