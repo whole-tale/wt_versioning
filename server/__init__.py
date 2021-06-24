@@ -57,6 +57,16 @@ def addVersionsAndRuns(event: events.Event) -> None:
     event.addResponse(tale)
 
 
+def removeVersionsAndRuns(event: events.Event) -> None:
+    tale = event.info
+    creator = User().load(tale["creatorId"], force=True)
+    for folder_id in (tale["runsRootId"], tale["versionsRootId"]):
+        root = Folder().load(folder_id, user=creator, level=AccessType.WRITE)
+        Folder().remove(root)
+    shutil.rmtree(util.getTaleVersionsDirPath(tale))
+    shutil.rmtree(util.getTaleRunsDirPath(tale))
+
+
 def createIndex() -> None:
     Folder().ensureIndex('created')
 
@@ -116,6 +126,7 @@ def load(info):
     resetCrashedCriticalSections()
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
+    events.bind('model.tale.remove', 'wt_versioning', removeVersionsAndRuns)
     events.bind('wholetale.tale.copied', 'wt_versioning', copyVersions)
     Tale().exposeFields(
         level=AccessType.READ, fields={"versionsRootId", "runsRootId", "restoredFrom"}
