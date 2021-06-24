@@ -87,6 +87,25 @@ class RunsTestCase(BaseTestCase):
         run = Folder().load(run["_id"], force=True)
         self.assertEqual(run["name"], resp.json["name"])
 
+        resp = self.request(
+            path="/run/exists",
+            method="GET",
+            params={"name": "test run", "taleId": tale["_id"]},
+            user=self.user_one,
+        )
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json, {"exists": False})
+
+        resp = self.request(
+            path="/run/exists",
+            method="GET",
+            params={"name": "a better name", "taleId": tale["_id"]},
+            user=self.user_one,
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(resp.json["exists"])
+        self.assertEqual(resp.json["obj"]["_id"], str(run["_id"]))
+
         # Get current status, should be UNKNOWN
         resp = self.request(
             path=f"/run/{run['_id']}/status", method="GET", user=self.user_one

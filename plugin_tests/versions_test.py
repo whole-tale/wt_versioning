@@ -47,6 +47,15 @@ class VersionTestCase(BaseTestCase):
             f.write(file1_content)
 
         resp = self.request(
+            path="/version/exists",
+            method="GET",
+            user=self.user_one,
+            params={"name": "First Version", "taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json, {"exists": False})
+
+        resp = self.request(
             path="/version",
             method="POST",
             user=self.user_one,
@@ -54,6 +63,16 @@ class VersionTestCase(BaseTestCase):
         )
         self.assertStatusOk(resp)
         version = resp.json
+
+        resp = self.request(
+            path="/version/exists",
+            method="GET",
+            user=self.user_one,
+            params={"name": "First Version", "taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(resp.json["exists"])
+        self.assertEqual(resp.json["obj"]["_id"], version["_id"])
 
         version_root = Setting().get(PluginSettings.VERSIONS_DIRS_ROOT)
         version_path = pathlib.Path(version_root) / tale["_id"][:2] / tale["_id"]
