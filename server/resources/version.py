@@ -283,6 +283,8 @@ class Version(AbstractVRResource):
 
     @classmethod
     def _incrementReferenceCount(cls, vfolder):
+        if FIELD_REFERENCE_COUNTER not in vfolder:
+            vfolder[FIELD_REFERENCE_COUNTER] = 0
         cls._updateReferenceCount(vfolder, 1)
 
     @classmethod
@@ -294,10 +296,10 @@ class Version(AbstractVRResource):
         root = Folder().load(vfolder['parentId'], force=True)
         cls._setCriticalSectionFlag(root)
         try:
-            vfolder = Folder().load(vfolder['_id'], force=True)
-            if FIELD_REFERENCE_COUNTER in vfolder:
-                vfolder[FIELD_REFERENCE_COUNTER] += n
-                Folder().save(vfolder)
+            vfolder[FIELD_REFERENCE_COUNTER] += n
+            vfolder = Folder().save(vfolder)
+        except KeyError:
+            pass
         finally:
             cls._resetCriticalSectionFlag(root)
 
