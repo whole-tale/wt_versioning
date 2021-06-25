@@ -129,6 +129,29 @@ class RunsTestCase(BaseTestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json, dict(status=2, statusString="RUNNING"))
 
+        # Create a 2nd tale to verify GET /run is doing the right thing...
+        tale2 = self._create_example_tale(self.get_dataset([0]))
+        self.assertNotEqual(tale["_id"], tale2["_id"])
+
+        resp = self.request(
+            path="/run",
+            method="GET",
+            user=self.user_one,
+            params={"taleId": tale2["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json, [])  # This tale doesn't have runs
+
+        resp = self.request(
+            path="/run",
+            method="GET",
+            user=self.user_one,
+            params={"taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(len(resp.json), 1)
+        self.assertEqual(resp.json[0]["_id"], str(run["_id"]))
+
         resp = self.request(
             path=f"/run/{run['_id']}", method="DELETE", user=self.user_one
         )

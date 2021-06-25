@@ -127,7 +127,9 @@ class Run(AbstractVRResource):
                        'tale)', 403)
     )
     def list(self, tale: dict, limit, offset, sort):
-        return super().list(tale, limit, offset, sort)
+        return super().list(
+            tale, user=self.getCurrentUser(), limit=limit, offset=offset, sort=sort
+        )
 
     @access.user(TokenScope.DATA_READ)
     @autoDescribeRoute(
