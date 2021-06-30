@@ -121,7 +121,7 @@ class Run(AbstractVRResource):
     @autoDescribeRoute(
         Description('Lists runs.')
         .modelParam('taleId', 'The ID of the tale to which the runs belong.', model=Tale,
-                    level=AccessType.READ, destName='tale')
+                    level=AccessType.READ, destName='tale', paramType="query")
         .pagingParams(defaultSort='created')
         .errorResponse('Access was denied (if current user does not have read access to this '
                        'tale)', 403)
