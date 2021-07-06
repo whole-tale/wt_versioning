@@ -38,17 +38,6 @@ class Version(AbstractVRResource):
         events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.ensure_version)
         events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
 
-    @access.user
-    @autoDescribeRoute(
-        Description('Clears all versions from a tale, but does not delete the respective '
-                    'directories on disk. This is an administrative operation and should not be'
-                    'used under normal circumstances.')
-        .modelParam('taleId', 'The ID of the tale for which the versions should be cleared',
-                    model=Tale, level=AccessType.ADMIN, destName='tale', paramType='query')
-    )
-    def clear(self, tale: dict) -> None:
-        super().clear(tale)
-
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
     @autoDescribeRoute(
@@ -283,6 +272,8 @@ class Version(AbstractVRResource):
 
     @classmethod
     def _incrementReferenceCount(cls, vfolder):
+        if FIELD_REFERENCE_COUNTER not in vfolder:
+            vfolder[FIELD_REFERENCE_COUNTER] = 0
         cls._updateReferenceCount(vfolder, 1)
 
     @classmethod
@@ -294,10 +285,10 @@ class Version(AbstractVRResource):
         root = Folder().load(vfolder['parentId'], force=True)
         cls._setCriticalSectionFlag(root)
         try:
-            vfolder = Folder().load(vfolder['_id'], force=True)
-            if FIELD_REFERENCE_COUNTER in vfolder:
-                vfolder[FIELD_REFERENCE_COUNTER] += n
-                Folder().save(vfolder)
+            vfolder[FIELD_REFERENCE_COUNTER] += n
+            vfolder = Folder().save(vfolder)
+        except KeyError:
+            pass
         finally:
             cls._resetCriticalSectionFlag(root)
 

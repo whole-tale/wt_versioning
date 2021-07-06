@@ -3,14 +3,13 @@ import json
 import os
 import pathlib
 import time
+
 from girder.models.folder import Folder
 from girder.models.setting import Setting
-from girder.models.user import User
-
 from tests import base
 
+from .utils import BaseTestCase
 
-Image = None
 Tale = None
 TaleStatus = None
 
@@ -22,149 +21,16 @@ def setUpModule():
     base.enabledPlugins.append("wt_versioning")
     base.startServer()
 
-    global Image, Tale, TaleStatus
-    from girder.plugins.wholetale.models.image import Image
-    from girder.plugins.wholetale.models.tale import Tale
+    global Tale, TaleStatus
     from girder.plugins.wholetale.constants import TaleStatus
+    from girder.plugins.wholetale.models.tale import Tale
 
 
 def tearDownModule():
     base.stopServer()
 
 
-class VersionTestCase(base.TestCase):
-    def setUp(self):
-        super(VersionTestCase, self).setUp()
-
-        users = (
-            {
-                "email": "root@dev.null",
-                "login": "admin",
-                "firstName": "Root",
-                "lastName": "van Klompf",
-                "password": "secret",
-                "admin": True,
-            },
-            {
-                "email": "joe@dev.null",
-                "admin": False,
-                "login": "joeregular",
-                "firstName": "Joe",
-                "lastName": "Regular",
-                "password": "secret",
-            },
-            {
-                "firstName": "Barbara",
-                "lastName": "Smith",
-                "login": "basia",
-                "email": "basia@localhost.com",
-                "admin": False,
-                "password": "password",
-            },
-        )
-
-        self.admin, self.user_one, self.user_two = (
-            User().createUser(**user) for user in users
-        )
-        self.image = Image().createImage(
-            name="test my name",
-            creator=self.user_one,
-            public=True,
-            config=dict(
-                template="base.tpl",
-                buildpack="SomeBuildPack",
-                user="someUser",
-                port=8888,
-                urlPath="",
-            ),
-        )
-
-        self.image2 = Image().createImage(
-            name="test other name",
-            creator=self.user_one,
-            public=True,
-            config=dict(
-                template="base.tpl",
-                buildpack="OtherBuildPack",
-                user="someUser",
-                port=8888,
-                urlPath="",
-            ),
-        )
-
-        self.data_map = [
-            {
-                "dataId": "resource_map_doi:10.5065/D6862DM8",
-                "doi": "10.5065/D6862DM8",
-                "name": "Humans and Hydrology at High Latitudes: Water Use Information",
-                "repository": "DataONE",
-                "size": 28_856_295,
-                "tale": False,
-            },
-            {
-                "dataId": (
-                    "https://dataverse.harvard.edu/dataset.xhtml?"
-                    "persistentId=doi:10.7910/DVN/Q5PV4U"
-                ),
-                "doi": "doi:10.7910/DVN/Q5PV4U",
-                "name": (
-                    "Replication Data for: Misgovernance and Human Rights: "
-                    "The Case of Illegal Detention without Intent"
-                ),
-                "repository": "Dataverse",
-                "size": 6_326_512,
-                "tale": False,
-            },
-        ]
-
-        resp = self.request(
-            path="/dataset/register",
-            method="POST",
-            params={"dataMap": json.dumps(self.data_map)},
-            user=self.user_one,
-        )
-        self.assertStatusOk(resp)
-
-    def _create_example_tale(self, dataset=None):
-        if dataset is None:
-            dataset = []
-        tale = {
-            "authors": [
-                {
-                    "firstName": "Kacper",
-                    "lastName": "Kowalik",
-                    "orcid": "https://orcid.org/0000-0003-1709-3744",
-                }
-            ],
-            "category": "science",
-            "config": {},
-            "dataSet": dataset,
-            "description": "Something something...",
-            "imageId": str(self.image["_id"]),
-            "public": False,
-            "published": False,
-            "title": "Some tale with dataset and versions",
-        }
-
-        resp = self.request(
-            path="/tale",
-            method="POST",
-            user=self.user_one,
-            type="application/json",
-            body=json.dumps(tale),
-        )
-        self.assertStatusOk(resp)
-        tale = resp.json
-        return tale
-
-    def _remove_example_tale(self, tale, user=None):
-        if not user:
-            user = self.user_one
-        resp = self.request(
-            path="/tale/{_id}".format(**tale), method="DELETE", user=user
-        )
-        self.assertStatusOk(resp)
-
+class VersionTestCase(BaseTestCase):
     def testBasicVersionOps(self):
         from girder.plugins.wt_versioning.constants import PluginSettings
 
@@ -181,6 +47,15 @@ class VersionTestCase(base.TestCase):
             f.write(file1_content)
 
         resp = self.request(
+            path="/version/exists",
+            method="GET",
+            user=self.user_one,
+            params={"name": "First Version", "taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json, {"exists": False})
+
+        resp = self.request(
             path="/version",
             method="POST",
             user=self.user_one,
@@ -188,6 +63,16 @@ class VersionTestCase(base.TestCase):
         )
         self.assertStatusOk(resp)
         version = resp.json
+
+        resp = self.request(
+            path="/version/exists",
+            method="GET",
+            user=self.user_one,
+            params={"name": "First Version", "taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        self.assertTrue(resp.json["exists"])
+        self.assertEqual(resp.json["obj"]["_id"], version["_id"])
 
         version_root = Setting().get(PluginSettings.VERSIONS_DIRS_ROOT)
         version_path = pathlib.Path(version_root) / tale["_id"][:2] / tale["_id"]
@@ -431,21 +316,6 @@ class VersionTestCase(base.TestCase):
 
         # Clean up
         self._remove_example_tale(tale)
-
-    def get_dataset(self, indices):
-        user = User().load(self.user_one["_id"], force=True)
-        dataSet = []
-        for i in indices:
-            _id = user["myData"][i]
-            folder = Folder().load(_id, force=True)
-            dataSet.append(
-                {
-                    "_modelType": "folder",
-                    "itemId": str(_id),
-                    "mountPath": folder["name"],
-                }
-            )
-        return dataSet
 
     def testDatasetHandling(self):
         tale = self._create_example_tale(dataset=self.get_dataset([0]))

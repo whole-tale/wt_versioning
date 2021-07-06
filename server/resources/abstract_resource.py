@@ -19,7 +19,6 @@ class AbstractVRResource(Resource):
         Resource.__init__(self)
         self.resourceName = resourceName
         self.rootDirName = rootDirName
-        self.route('GET', ('clear',), self.clear)
         self.route('POST', (), self.create)
         self.route('GET', (), self.list)
         self.route('GET', ('exists',), self.exists)
@@ -82,21 +81,6 @@ class AbstractVRResource(Resource):
         # update the time
         Folder().updateFolder(rootFolder)
         return folder
-
-    def clear(self, tale: dict) -> None:
-        user = self.getCurrentUser()
-        root = self._getRootFromTale(tale, user=user, level=AccessType.ADMIN)
-        n = 0
-        for v in Folder().childFolders(root, "folder", user=user, level=AccessType.ADMIN):
-            n += 1
-            if 'fsPath' in v:
-                path = v['fsPath']
-            else:
-                path = 'Unknown'
-                logger.warn('Missing fspath: %s' % v)
-            Folder().remove(v)
-            logger.info('Directory not removed: %s' % path)
-        return 'Deleted %s versions' % n
 
     def rename(self, vrfolder: dict, newName: str, allow_rename: bool = False) -> dict:
         user = self.getCurrentUser()

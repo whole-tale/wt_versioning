@@ -131,6 +131,9 @@ def load(info):
     Tale().exposeFields(
         level=AccessType.READ, fields={"versionsRootId", "runsRootId", "restoredFrom"}
     )
+    Folder().exposeFields(
+        level=AccessType.READ, fields={"runVersionId", "runStatus"}
+    )
 
     info['apiRoot'].version = Version(info["apiRoot"].tale)
     info['apiRoot'].run = Run()
