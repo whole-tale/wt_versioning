@@ -11,7 +11,7 @@ from girder.utility import setting_utilities
 from girder.plugins.wholetale.lib.manifest import Manifest
 from girder.plugins.wholetale.models.tale import Tale
 from .resources.version import Version, FIELD_CRITICAL_SECTION_FLAG
-from .resources.run import Run
+from .resources.run import Run, FIELD_STATUS_CODE
 from .constants import PluginSettings, Constants
 from .lib import util
 
@@ -132,7 +132,7 @@ def load(info):
         level=AccessType.READ, fields={"versionsRootId", "runsRootId", "restoredFrom"}
     )
     Folder().exposeFields(
-        level=AccessType.READ, fields={"runVersionId", "runStatus"}
+        level=AccessType.READ, fields={"runVersionId", FIELD_STATUS_CODE}
     )
 
     info['apiRoot'].version = Version(info["apiRoot"].tale)
