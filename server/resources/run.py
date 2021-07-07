@@ -8,7 +8,7 @@ from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
 from girder.constants import AccessType, TokenScope
 from girder.models.folder import Folder
-from girder.plugins.models.job import Job
+from girder.plugins.jobs.models.job import Job
 from girder.plugins.wholetale.models.tale import Tale
 from girder.models.token import Token
 from girder.plugins.wholetale.utils import init_progress
