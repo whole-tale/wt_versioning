@@ -15,7 +15,7 @@ from ..constants import Constants, RunStatus, RunState
 from ..lib import util
 
 FIELD_SEQENCE_NUMBER = 'seq'
-FIELD_STATUS_CODE = 'runStatusCode'
+FIELD_STATUS_CODE = 'runStatus'
 RUN_NAME_FORMAT = '%c'
 
 
@@ -194,7 +194,7 @@ class Run(AbstractVRResource):
         runFolder = self._createSubdir(rootDir, root, name, user=self.getCurrentUser())
 
         runFolder['runVersionId'] = version['_id']
-        runFolder['runStatus'] = RunStatus.UNKNOWN.code
+        runFolder[FIELD_STATUS_CODE] = RunStatus.UNKNOWN.code
         Folder().save(runFolder, False)
 
         # Structure is:
