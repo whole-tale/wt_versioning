@@ -1,4 +1,6 @@
 import os
+import json
+import mock
 
 from girder.models.folder import Folder
 from tests import base
@@ -164,3 +166,51 @@ class RunsTestCase(BaseTestCase):
             path=f"/version/{version['_id']}", method="DELETE", user=self.user_one
         )
         self.assertStatusOk(resp)
+
+    @mock.patch('gwvolman.tasks.recorded_run')
+    def testRecordedRun(self, rr):
+        tale = self._create_example_tale(self.get_dataset([0]))
+        workspace = Folder().load(tale["workspaceId"], force=True)
+
+        file1_content = b"#!/bin/bash\nmkdir output\ndate > output/date.txt"
+        file1_name = "run.sh"
+
+        with open(os.path.join(workspace["fsPath"], file1_name), "wb") as f:
+            f.write(file1_content)
+
+        resp = self.request(
+            path="/version",
+            method="POST",
+            user=self.user_one,
+            params={"name": "v1", "taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        version = resp.json
+
+        resp = self.request(
+            path="/run",
+            method="POST",
+            user=self.user_one,
+            params={"versionId": version["_id"], "name": "r1"}
+        )
+        self.assertStatusOk(resp)
+        run = resp.json
+
+        with mock.patch('girder_worker.task.celery.Task.apply_async', spec=True) \
+                as mock_apply_async:
+
+            mock_apply_async().job.return_value = json.dumps({'job': 1, 'blah': 2})
+
+            resp = self.request(
+                path='/run/%s/start' % run["_id"],
+                method="POST",
+                user=self.user_one
+            )
+            job_call = mock_apply_async.call_args_list[-1][-1]
+            self.assertEqual(
+                job_call['args'], (str(run['_id']), (str(tale['_id'])))
+            )
+            self.assertEqual(job_call['headers']['girder_job_title'], 'Recorded Run')
+
+        self.assertStatusOk(resp)
+        return
