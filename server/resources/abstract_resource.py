@@ -42,7 +42,7 @@ class AbstractVRResource(Resource):
         name: Optional[str],
         parentFolder: dict,
         allow_rename: bool = False,
-    ) -> None:
+    ) -> str:
         if not name:
             raise RestException('Name cannot be empty.', code=400)
 
