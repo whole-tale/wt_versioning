@@ -81,6 +81,9 @@ class Run(AbstractVRResource):
         .param('name', 'An optional name for the run. If not specified, a name will be '
                        'generated from the current date and time.', required=False,
                dataType='string', paramType='query')
+        .param('allowRename', 'Allow to modify "name" if object with the same name '
+                              'already exists.', required=False, dataType='boolean',
+               default=False)
         .errorResponse('Access was denied (if current user does not have write access to the tale '
                        'associated with this version)', 403)
         .errorResponse('Illegal file name', 400)
