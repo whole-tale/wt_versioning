@@ -225,7 +225,13 @@ class VersionTestCase(BaseTestCase):
         restored_tale = resp.json
 
         for key in restored_tale.keys():
-            if key in ("created", "updated", "restoredFrom", "imageInfo"):
+            if key in {
+                "created",
+                "updated",
+                "restoredFrom",
+                "imageInfo",
+                "dataSetCitation",  # slow
+            }:
                 continue
             try:
                 self.assertEqual(restored_tale[key], first_version_tale[key])
