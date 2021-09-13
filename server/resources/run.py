@@ -88,14 +88,16 @@ class Run(AbstractVRResource):
                        'associated with this version)', 403)
         .errorResponse('Illegal file name', 400)
     )
-    def create(self, version: dict, name: str = None) -> dict:
+    def create(self, version: dict, name: str = None, allowRename: bool = False) -> dict:
+        if not name:
+            name = self._generateName()
         user = self.getCurrentUser()
         versionsRoot = Folder().load(version['parentId'], user=user, level=AccessType.WRITE)
         taleId = versionsRoot['taleId']
         tale = Tale().load(taleId, user=user, level=AccessType.WRITE)
 
         root = self._getRootFromTale(tale, user=user, level=AccessType.WRITE)
-        self._checkNameSanity(name, root)
+        name = self._checkNameSanity(name, root, allow_rename=allowRename)
 
         rootDir = util.getTaleRunsDirPath(tale)
 
