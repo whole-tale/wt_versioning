@@ -34,6 +34,7 @@ class Version(AbstractVRResource):
     def __init__(self, tale_node):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
         self.route('GET', (':id', 'dataSet'), self.getDataset)
+        tale_node.route("GET", (":id", "restore"), self.restoreView)
         tale_node.route("PUT", (":id", "restore"), self.restore)
         events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.ensure_version)
         events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
@@ -185,6 +186,37 @@ class Version(AbstractVRResource):
         finally:
             # probably need a better way to deal with hard crashes here
             Version._resetCriticalSectionFlag(version_root)
+
+    @access.user(TokenScope.DATA_READ)
+    @filtermodel(model="tale", plugin="wholetale")
+    @autoDescribeRoute(
+        Description("Returns a Tale object based on a version.")
+        .notes("It does not modify the state of the Tale. It is just a 'mocked' view.")
+        .modelParam(
+            "id",
+            "The ID of the Tale",
+            model=Tale,
+            level=AccessType.READ,
+            destName="tale",
+        )
+        .modelParam(
+            "versionId",
+            "The ID of version folder",
+            model=Folder,
+            level=AccessType.READ,
+            destName="version",
+            paramType="query",
+        )
+        .errorResponse(
+            "Access was denied (if current user does not have read access to this "
+            "tale)",
+            403,
+        )
+    )
+    def restoreView(self, tale: dict, version: dict):
+        version = Folder().load(version["_id"], force=True, fields=["fsPath"])
+        tale.update(self._restoreTaleFromVersion(version))
+        return tale
 
     def _restoreTaleFromVersion(self, version, annotate=True):
         version_path = Path(version["fsPath"])
