@@ -59,9 +59,8 @@ def addVersionsAndRuns(event: events.Event) -> None:
 
 def removeVersionsAndRuns(event: events.Event) -> None:
     tale = event.info
-    creator = User().load(tale["creatorId"], force=True)
     for folder_id in (tale["runsRootId"], tale["versionsRootId"]):
-        root = Folder().load(folder_id, user=creator, level=AccessType.WRITE)
+        root = Folder().load(folder_id, force=True)
         Folder().remove(root)
     shutil.rmtree(util.getTaleVersionsDirPath(tale))
     shutil.rmtree(util.getTaleRunsDirPath(tale))
