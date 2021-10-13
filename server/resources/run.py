@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Union, Optional
 
+from girder import events
 from girder.api import access
 from girder.api.describe import autoDescribeRoute, Description
 from girder.api.rest import filtermodel
@@ -31,6 +32,8 @@ class Run(AbstractVRResource):
         self.route('PATCH', (':id', 'status'), self.setStatus)
         self.route('GET', (':id', 'status'), self.status)
         self.route('POST', (':id', 'start'), self.startRun)
+        events.bind("rest.put.run/:id.after", "wt_versioning", self.update_parents)
+        events.bind("rest.delete.run/:id.before", "wt_versioning", self.update_parents)
 
     @access.user()
     @filtermodel('folder')
@@ -102,6 +105,7 @@ class Run(AbstractVRResource):
         rootDir = util.getTaleRunsDirPath(tale)
 
         run = self._create(version, name, root, rootDir)
+        Tale().updateTale(tale)
         Version._incrementReferenceCount(version)
 
         return run

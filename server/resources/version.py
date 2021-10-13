@@ -38,6 +38,8 @@ class Version(AbstractVRResource):
         tale_node.route("PUT", (":id", "restore"), self.restore)
         events.bind("rest.get.tale/:id/export.before", "wt_versioning", self.ensure_version)
         events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
+        events.bind("rest.put.version/:id.after", "wt_versioning", self.update_parents)
+        events.bind("rest.delete.version/:id.before", "wt_versioning", self.update_parents)
 
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')

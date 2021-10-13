@@ -5,11 +5,14 @@ from typing import Optional
 
 import pathvalidate
 
-from girder import logger
-from girder.constants import AccessType
+from girder import events, logger
+from girder.api import access
+from girder.constants import AccessType, TokenScope
 from girder.api.v1.resource import Resource
 from girder.exceptions import RestException
 from girder.models.folder import Folder
+
+from girder.plugins.wholetale.models.tale import Tale
 
 
 class AbstractVRResource(Resource):
@@ -95,6 +98,17 @@ class AbstractVRResource(Resource):
 
     def load(self, vrfolder: dict) -> dict:
         raise NotImplementedError
+
+    @access.user(scope=TokenScope.DATA_WRITE)
+    def update_parents(self, event: events.Event):
+        vrfolder_id = event.info.get("id")
+        user = self.getCurrentUser()
+        vrfolder = Folder().load(vrfolder_id, user=user, level=AccessType.WRITE)
+        if vrfolder:
+            root = Folder().load(vrfolder['parentId'], user=user, level=AccessType.WRITE)
+            Folder().updateFolder(root)
+            tale = Tale().load(root["meta"]["taleId"], user=user, level=AccessType.WRITE)
+            Tale().updateTale(tale)
 
     def list(
         self,
