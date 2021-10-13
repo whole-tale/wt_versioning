@@ -173,7 +173,7 @@ class RunsTestCase(BaseTestCase):
         workspace = Folder().load(tale["workspaceId"], force=True)
 
         file1_content = b"#!/bin/bash\nmkdir output\ndate > output/date.txt"
-        file1_name = "run.sh"
+        file1_name = "entrypoint.sh"
 
         with open(os.path.join(workspace["fsPath"], file1_name), "wb") as f:
             f.write(file1_content)
@@ -201,6 +201,7 @@ class RunsTestCase(BaseTestCase):
 
             mock_apply_async().job.return_value = json.dumps({'job': 1, 'blah': 2})
 
+            # Test default entrypoint
             resp = self.request(
                 path='/run/%s/start' % run["_id"],
                 method="POST",
@@ -208,9 +209,28 @@ class RunsTestCase(BaseTestCase):
             )
             job_call = mock_apply_async.call_args_list[-1][-1]
             self.assertEqual(
-                job_call['args'], (str(run['_id']), (str(tale['_id'])))
+                job_call['args'], (str(run['_id']), (str(tale['_id'])), "run.sh")
             )
             self.assertEqual(job_call['headers']['girder_job_title'], 'Recorded Run')
+            self.assertStatusOk(resp)
 
-        self.assertStatusOk(resp)
+        # Test default entrypoint
+        with mock.patch('girder_worker.task.celery.Task.apply_async', spec=True) \
+                as mock_apply_async:
+
+            mock_apply_async().job.return_value = json.dumps({'job': 1, 'blah': 2})
+
+            resp = self.request(
+                path='/run/%s/start' % run["_id"],
+                method="POST",
+                user=self.user_one,
+                params={"entrypoint": "entrypoint.sh"}
+            )
+            job_call = mock_apply_async.call_args_list[-1][-1]
+            self.assertEqual(
+                job_call['args'], (str(run['_id']), (str(tale['_id'])), "entrypoint.sh")
+            )
+            self.assertEqual(job_call['headers']['girder_job_title'], 'Recorded Run')
+            self.assertStatusOk(resp)
+
         return
