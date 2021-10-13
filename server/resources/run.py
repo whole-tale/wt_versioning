@@ -246,11 +246,16 @@ class Run(AbstractVRResource):
         Description('Start the recorded_run job')
         .modelParam('id', 'The ID of a run.', model=Folder, level=AccessType.WRITE,
                     destName='run')
+        .param('entrypoint', 'Entrypoint command for recorded run. Defaults to run.sh',
+               required=False, dataType='string', paramType='query')
         .errorResponse('Access was denied (if current user does not have write access to '
                        'this run)', 403)
     )
-    def startRun(self, run):
+    def startRun(self, run, entrypoint):
         user = self.getCurrentUser()
+
+        if not entrypoint:
+            entrypoint = "run.sh"
 
         runRoot = Folder().load(run['parentId'], user=user, level=AccessType.WRITE)
         tale = Tale().load(runRoot['meta']['taleId'], user=user, level=AccessType.READ)
@@ -268,7 +273,7 @@ class Run(AbstractVRResource):
             'Initializing', RECORDED_RUN_STEP_TOTAL)
 
         rrTask = recorded_run.signature(
-            args=[str(run['_id']), str(tale['_id'])],
+            args=[str(run['_id']), str(tale['_id']), entrypoint],
             girder_job_other_fields={
                 'wt_notification_id': str(notification['_id']),
             },
