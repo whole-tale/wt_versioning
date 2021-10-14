@@ -53,8 +53,7 @@ def addVersionsAndRuns(event: events.Event) -> None:
         PluginSettings.RUNS_DIRS_ROOT, creator
     )
     tale["runsRootId"] = runs_root["_id"]
-    tale = Tale().save(tale)
-    event.addResponse(tale)
+    tale = Tale().save(tale, triggerEvents=False, validate=False)
 
 
 def removeVersionsAndRuns(event: events.Event) -> None:
