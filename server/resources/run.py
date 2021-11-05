@@ -110,10 +110,10 @@ class Run(AbstractVRResource):
 
         return run
 
-    @access.user(TokenScope.DATA_WRITE)
+    @access.user(TokenScope.DATA_OWN)
     @autoDescribeRoute(
         Description('Deletes a run.')
-        .modelParam('id', 'The ID of run', model=Folder, level=AccessType.WRITE,
+        .modelParam('id', 'The ID of run', model=Folder, level=AccessType.ADMIN,
                     destName='rfolder')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)

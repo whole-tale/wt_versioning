@@ -231,10 +231,10 @@ class Version(AbstractVRResource):
             restored_tale["restoredFrom"] = version["_id"]
         return restored_tale
 
-    @access.user(TokenScope.DATA_WRITE)
+    @access.user(TokenScope.DATA_OWN)
     @autoDescribeRoute(
         Description('Deletes a version.')
-        .modelParam('id', 'The ID of version folder', model=Folder, level=AccessType.WRITE,
+        .modelParam('id', 'The ID of version folder', model=Folder, level=AccessType.ADMIN,
                     destName='vfolder')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
