@@ -17,6 +17,7 @@ from girder.plugins.wholetale.lib.manifest import Manifest
 from girder.plugins.wholetale.lib.manifest_parser import ManifestParser
 from girder.plugins.wholetale.models.tale import Tale
 from girder.plugins.wt_data_manager.models.session import Session
+from girder.plugins.virtual_resources.rest import VirtualObject
 
 from ..constants import Constants
 from ..lib import util
@@ -218,6 +219,9 @@ class Version(AbstractVRResource):
     def restoreView(self, tale: dict, version: dict):
         version = Folder().load(version["_id"], force=True, fields=["fsPath"])
         tale.update(self._restoreTaleFromVersion(version))
+        tale["workspaceId"] = VirtualObject().generate_id(
+            Path(version["fsPath"]) / "workspace", version["_id"]
+        )
         return tale
 
     def _restoreTaleFromVersion(self, version, annotate=True):

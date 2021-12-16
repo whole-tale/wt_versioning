@@ -233,6 +233,9 @@ class VersionTestCase(BaseTestCase):
             params={"versionId": version["_id"]},
         )
         self.assertStatusOk(resp)
+        view_tale = resp.json
+        self.assertTrue(view_tale["workspaceId"].startswith("wtlocal:"))
+        view_tale["workspaceId"] = first_version_tale["workspaceId"]
         self._compare_tales(resp.json, first_version_tale)
 
         # Restore First Version
