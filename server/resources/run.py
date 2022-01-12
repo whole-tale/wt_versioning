@@ -10,6 +10,7 @@ from girder.api.rest import filtermodel
 from girder.constants import AccessType, TokenScope
 from girder.models.folder import Folder
 from girder.plugins.jobs.models.job import Job
+from girder.plugins.jobs.constants import JobStatus
 from girder.plugins.wholetale.models.tale import Tale
 from girder.models.token import Token
 from girder.plugins.wholetale.utils import init_progress
@@ -34,6 +35,7 @@ class Run(AbstractVRResource):
         self.route('POST', (':id', 'start'), self.startRun)
         events.bind("rest.put.run/:id.after", "wt_versioning", self.update_parents)
         events.bind("rest.delete.run/:id.before", "wt_versioning", self.update_parents)
+        events.bind('jobs.job.update.after', 'wt_versioning', self.updateRunStatus)
 
     @access.user()
     @filtermodel('folder')
@@ -285,3 +287,30 @@ class Run(AbstractVRResource):
         ).apply_async()
 
         return Job().filter(rrTask.job, user=user)
+
+    def updateRunStatus(self, event):
+        """
+        Event handler that updates the run status based on the recorded_run task.
+        """
+        job = event.info['job']
+        if job['title'] == 'Recorded Run' and job.get('status') is not None:
+            status = int(job['status'])
+            rfolder = Folder().load(job['args'][0], force=True)
+
+            # Store the previous status, if present.
+            previousStatus = -1
+            try:
+                previousStatus = rfolder[FIELD_STATUS_CODE]
+            except KeyError:
+                pass
+
+            if status == JobStatus.SUCCESS:
+                rfolder[FIELD_STATUS_CODE] = RunStatus.COMPLETED.code
+            elif status == JobStatus.ERROR:
+                rfolder[FIELD_STATUS_CODE] = RunStatus.FAILED.code
+            elif status in (JobStatus.QUEUED, JobStatus.RUNNING):
+                rfolder[FIELD_STATUS_CODE] = RunStatus.RUNNING.code
+
+            # If the status changed, save the object
+            if FIELD_STATUS_CODE in rfolder and rfolder[FIELD_STATUS_CODE] != previousStatus:
+                Folder().save(rfolder)
