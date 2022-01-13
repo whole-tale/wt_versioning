@@ -25,8 +25,8 @@ def validateOtherSettings(event):
 
 
 def setDefaults() -> None:
-    SettingDefault.defaults[PluginSettings.VERSIONS_DIRS_ROOT] = '/tmp/wt-versions-dirs'
-    SettingDefault.defaults[PluginSettings.RUNS_DIRS_ROOT] = '/tmp/wt-runs-dirs'
+    SettingDefault.defaults[PluginSettings.VERSIONS_DIRS_ROOT] = '/tmp/wt/versions'
+    SettingDefault.defaults[PluginSettings.RUNS_DIRS_ROOT] = '/tmp/wt/runs'
 
 
 def _createAuxFolder(tale, name, rootProp, creator):
