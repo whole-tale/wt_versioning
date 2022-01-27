@@ -298,11 +298,7 @@ class Run(AbstractVRResource):
             rfolder = Folder().load(job['args'][0], force=True)
 
             # Store the previous status, if present.
-            previousStatus = -1
-            try:
-                previousStatus = rfolder[FIELD_STATUS_CODE]
-            except KeyError:
-                pass
+            previousStatus = rfolder.get(FIELD_STATUS_CODE, -1)
 
             if status == JobStatus.SUCCESS:
                 rfolder[FIELD_STATUS_CODE] = RunStatus.COMPLETED.code
