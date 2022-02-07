@@ -183,6 +183,8 @@ class Version(AbstractVRResource):
             shutil.rmtree(workspace_path)
             workspace_path.mkdir()
             self._snapshotRecursive(None, version_workspace_path, workspace_path)
+            # restore data dir
+            self._restoreDataDir(tale, version, user=user)
             # restore Tale
             tale.update(self._restoreTaleFromVersion(version))
             return Tale().save(tale)
@@ -439,6 +441,41 @@ class Version(AbstractVRResource):
         newWorkspace = new_version_path / 'workspace'
         newWorkspace.mkdir()
         self._snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
+        self._snapshotDataDir(tale, new_version, user=user)
+
+    @staticmethod
+    def _snapshotDataDir(tale, version, user=None):
+        data_dir = Folder().load(tale["dataDirId"], user=user, level=AccessType.READ)
+        current_data_dir = Folder().childFolders(
+            data_dir, "folder", user=user, filters={"name": "current"}
+        )[0]
+
+        Folder().copyFolder(
+            current_data_dir,
+            parent=data_dir,
+            name=str(version["_id"]),
+            parentType="folder",
+            creator=user,
+        )
+
+    @staticmethod
+    def _restoreDataDir(tale, version, user=None):
+        data_dir = Folder().load(tale["dataDirId"], user=user, level=AccessType.READ)
+        current_data_dir = Folder().childFolders(
+            data_dir, "folder", user=user, filters={"name": "current"}
+        )[0]
+        source_data_dir = Folder().childFolders(
+            data_dir, "folder", user=user, filters={"name": str(version["_id"])}
+        )[0]
+
+        Folder().clean(current_data_dir)
+        Folder().copyFolderComponents(
+            source_data_dir,
+            current_data_dir,
+            user,
+            None,
+            current_data_dir
+        )
 
     def _is_same(self, tale, version, user):
         workspace = Folder().load(tale["workspaceId"], force=True)
