@@ -215,9 +215,7 @@ class Run(AbstractVRResource):
 
         # Structure is:
         #  @version -> ../Versions/<version> (link handled manually by FS)
-        #  @data -> version/data (link handled manualy by FS)
         #  @workspace -> version/workspace (same)
-        #  results
         #  .status
         #  .stdout (created using stream() above)
         #  .stderr (-''-)
@@ -227,14 +225,12 @@ class Run(AbstractVRResource):
         (runDir / 'version').symlink_to(
             f"../../../../versions/{tale_id[:2]}/{tale_id}/{version['_id']}", True
         )
-        (runDir / 'data').symlink_to('version/data', True)
         (runDir / 'workspace').mkdir()
         self._snapshotRecursive(
             None,
             (runDir / "version" / "workspace"),
             (runDir / "workspace")
         )
-        (runDir / 'results').mkdir()
         self._write_status(runDir, RunStatus.UNKNOWN)
 
         return runFolder
