@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from bson import ObjectId
 import copy
+import pathlib
 import shutil
 
 from girder import events
@@ -76,47 +78,75 @@ def resetCrashedCriticalSections():
     )
 
 
-def copyVersions(event: events.Event) -> None:
+def copyVersionsAndRuns(event: events.Event) -> None:
+
+    def get_dir_path(root_id_key, tale):
+        if root_id_key == "versionsRootId":
+            return util.getTaleVersionsDirPath(tale)
+        elif root_id_key == "runsRootId":
+            return util.getTaleRunsDirPath(tale)
+
     old_tale, new_tale = event.info
     creator = User().load(new_tale["creatorId"], force=True)
-    old_root = Folder().load(
-        old_tale["versionsRootId"], user=creator, level=AccessType.READ
-    )
-    new_root = Folder().load(
+    versions_map = {}
+    for root_id_key in ("versionsRootId", "runsRootId"):
+        old_root = Folder().load(
+            old_tale[root_id_key], user=creator, level=AccessType.READ
+        )
+        new_root = Folder().load(
+            new_tale[root_id_key], user=creator, level=AccessType.WRITE
+        )
+        old_root_path = get_dir_path(root_id_key, old_tale)
+        new_root_path = get_dir_path(root_id_key, new_tale)
+        for src in Folder().childFolders(old_root, "folder", user=creator):
+            dst = Folder().createFolder(
+                new_root, src["name"], creator=creator
+            )
+            if root_id_key == "versionsRootId":
+                versions_map[str(src["_id"])] = str(dst["_id"])
+            filtered_folder = Folder().filter(dst, creator)
+            for key in src:
+                if key not in filtered_folder and key not in dst:
+                    dst[key] = copy.deepcopy(src[key])
+
+            src_path = old_root_path / str(src["_id"])
+            dst_path = new_root_path / str(dst["_id"])
+            dst_path.mkdir(parents=True)
+            shutil.copytree(src_path, dst_path, dirs_exist_ok=True, symlinks=True)
+            dst.update(
+                {
+                    "fsPath": dst_path.absolute().as_posix(),
+                    "isMapping": True,
+                    "created": src["created"],  # preserve timestamps
+                    "updated": src["updated"],
+                }
+            )
+            if root_id_key == "runsRootId":
+                current_version = dst_path / "version"
+                new_version_id = versions_map[current_version.resolve().name]
+                new_version_path = (
+                    "../../../../versions/"
+                    f"{str(new_tale['_id'])[:2]}/{new_tale['_id']}/{new_version_id}"
+                )
+                current_version.unlink()
+                current_version.symlink_to(new_version_path, True)
+                dst["runVersionId"] = ObjectId(new_version_id)
+            dst = Folder().save(dst, validate=False, triggerEvents=False)
+        # update the time on root
+        Folder().updateFolder(new_root)
+
+    versions_root = Folder().load(
         new_tale["versionsRootId"], user=creator, level=AccessType.WRITE
     )
-    old_root_path = util.getTaleVersionsDirPath(old_tale)
-    new_root_path = util.getTaleVersionsDirPath(new_tale)
-    for src_version in Folder().childFolders(old_root, "folder", user=creator):
-        new_version = Folder().createFolder(
-            new_root, src_version["name"], creator=creator
-        )
-        filtered_folder = Folder().filter(new_version, creator)
-        for key in src_version:
-            if key not in filtered_folder and key not in new_version:
-                new_version[key] = copy.deepcopy(src_version[key])
-
-        src_version_path = old_root_path / str(src_version["_id"])
-        new_version_path = new_root_path / str(new_version["_id"])
-        new_version_path.mkdir(parents=True)
-        new_version.update(
-            {
-                "fsPath": new_version_path.absolute().as_posix(),
-                "isMapping": True,
-                "created": src_version["created"],  # preserve timestamps
-                "updated": src_version["updated"],
-            }
-        )
-        new_version = Folder().save(new_version, validate=False, triggerEvents=False)
-        shutil.copytree(src_version_path, new_version_path, dirs_exist_ok=True)
+    for version in Folder().childFolders(versions_root, "folder", user=creator):
         manifest = Manifest(
-            new_tale, creator, versionId=new_version["_id"], expand_folders=False
+            new_tale, creator, versionId=version["_id"], expand_folders=False
         )
-        with open(new_version_path / "manifest.json", "w") as fp:
+        dst_path = pathlib.Path(version["fsPath"])
+        with open(dst_path / "manifest.json", "w") as fp:
             fp.write(manifest.dump_manifest())
 
-    # update the time on root
-    Folder().updateFolder(new_root)
+    Folder().updateFolder(versions_root)
 
 
 def load(info):
@@ -126,7 +156,7 @@ def load(info):
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
     events.bind('model.tale.remove', 'wt_versioning', removeVersionsAndRuns)
-    events.bind('wholetale.tale.copied', 'wt_versioning', copyVersions)
+    events.bind('wholetale.tale.copied', 'wt_versioning', copyVersionsAndRuns)
     Tale().exposeFields(
         level=AccessType.READ, fields={"versionsRootId", "runsRootId", "restoredFrom"}
     )
