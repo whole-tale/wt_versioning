@@ -10,6 +10,11 @@ add_python_test(
   PLUGIN ${PLUGIN}
 )
 
+add_python_test(
+  copy
+  PLUGIN ${PLUGIN}
+)
+
 add_python_style_test(
   python_static_analysis_${PLUGIN}
   "${PROJECT_SOURCE_DIR}/plugins/${PLUGIN}/server"
