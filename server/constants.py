@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+FIELD_STATUS_CODE = "runStatus"
+
 
 class Constants:
     VERSIONS_ROOT_DIR_NAME = "WholeTale Tale Versions"
