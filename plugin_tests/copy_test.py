@@ -28,6 +28,58 @@ def tearDownModule():
 
 
 class CopyVersionAndRunsTestCase(BaseTestCase):
+    def testCopyVersion(self):
+        tale = self._create_example_tale(self.get_dataset([0]))
+        workspace = Folder().load(tale["workspaceId"], force=True)
+
+        with open(os.path.join(workspace["fsPath"], "version1"), "wb") as fp:
+            fp.write(b"This belongs to version1")
+
+        resp = self.request(
+            path="/version",
+            method="POST",
+            user=self.user_one,
+            params={"name": "First Version", "taleId": tale["_id"]},
+        )
+        self.assertStatusOk(resp)
+        version = resp.json
+
+        with open(os.path.join(workspace["fsPath"], "current_file"), "wb") as fp:
+            fp.write(b"This belongs to current unversioned state")
+        os.remove(os.path.join(workspace["fsPath"], "version1"))
+
+        resp = self.request(
+            path=f"/tale/{tale['_id']}/copy",
+            method="POST",
+            user=self.user_one,
+            params={"versionId": version["_id"]},
+        )
+        self.assertStatusOk(resp)
+        copied_tale = resp.json
+
+        retries = 10
+        while copied_tale["status"] < TaleStatus.READY or retries > 0:
+            time.sleep(0.5)
+            resp = self.request(
+                path=f"/tale/{copied_tale['_id']}", method="GET", user=self.user_one
+            )
+            self.assertStatusOk(resp)
+            copied_tale = resp.json
+            retries -= 1
+        self.assertEqual(copied_tale["status"], TaleStatus.READY)
+        workspace = Folder().load(copied_tale["workspaceId"], force=True)
+        self.assertTrue(os.path.exists(os.path.join(workspace["fsPath"], "version1")))
+        self.assertFalse(os.path.exists(os.path.join(workspace["fsPath"], "current_file")))
+
+        # Clean up
+        resp = self.request(
+            path=f"/tale/{copied_tale['_id']}",
+            method="DELETE",
+            user=self.user_one,
+        )
+        self.assertStatusOk(resp)
+        self._remove_example_tale(tale)
+
     def testFullCopy(self):
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
