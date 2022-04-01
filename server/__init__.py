@@ -72,7 +72,7 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         elif root_id_key == "runsRootId":
             return util.getTaleRunsDirPath(tale)
 
-    old_tale, new_tale = event.info
+    old_tale, new_tale, target_version_id = event.info
     creator = User().load(new_tale["creatorId"], force=True)
     versions_map = {}
     for root_id_key in ("versionsRootId", "runsRootId"):
@@ -133,6 +133,10 @@ def copyVersionsAndRuns(event: events.Event) -> None:
             fp.write(manifest.dump_manifest())
 
     Folder().updateFolder(versions_root)
+    if target_version_id:
+        new_version_id = versions_map[str(target_version_id)]
+        target_version = Folder().load(new_version_id, level=AccessType.READ, user=creator)
+        VersionHierarchyModel().restore(new_tale, target_version, creator)
 
 
 def load(info):
