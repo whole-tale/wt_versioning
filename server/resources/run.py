@@ -1,7 +1,4 @@
-import shutil
-from datetime import datetime
-from pathlib import Path
-from typing import Union, Optional
+from typing import Union
 
 from girder import events
 from girder.api import access
@@ -15,14 +12,9 @@ from girder.plugins.wholetale.models.tale import Tale
 from girder.models.token import Token
 from girder.plugins.wholetale.utils import init_progress
 from gwvolman.tasks import recorded_run, RECORDED_RUN_STEP_TOTAL
-from .version import Version
 from .abstract_resource import AbstractVRResource
-from ..constants import Constants, RunStatus, RunState
-from ..lib import util
-
-FIELD_SEQENCE_NUMBER = 'seq'
-FIELD_STATUS_CODE = 'runStatus'
-RUN_NAME_FORMAT = '%c'
+from ..constants import Constants, RunStatus, RunState, FIELD_STATUS_CODE
+from ..lib.run_hierarchy import RunHierarchyModel
 
 
 class Run(AbstractVRResource):
@@ -36,6 +28,7 @@ class Run(AbstractVRResource):
         events.bind("rest.put.run/:id.after", "wt_versioning", self.update_parents)
         events.bind("rest.delete.run/:id.before", "wt_versioning", self.update_parents)
         events.bind('jobs.job.update.after', 'wt_versioning', self.updateRunStatus)
+        self.model = RunHierarchyModel()
 
     @access.user()
     @filtermodel('folder')
@@ -94,23 +87,8 @@ class Run(AbstractVRResource):
         .errorResponse('Illegal file name', 400)
     )
     def create(self, version: dict, name: str = None, allowRename: bool = False) -> dict:
-        if not name:
-            name = self._generateName()
         user = self.getCurrentUser()
-        versionsRoot = Folder().load(version['parentId'], user=user, level=AccessType.WRITE)
-        taleId = versionsRoot['taleId']
-        tale = Tale().load(taleId, user=user, level=AccessType.WRITE)
-
-        root = self._getRootFromTale(tale, user=user, level=AccessType.WRITE)
-        name = self._checkNameSanity(name, root, allow_rename=allowRename)
-
-        rootDir = util.getTaleRunsDirPath(tale)
-
-        run = self._create(version, name, root, rootDir)
-        Tale().updateTale(tale)
-        Version._incrementReferenceCount(version)
-
-        return run
+        return self.model.create(version, name, user, allowRename=allowRename)
 
     @access.user(TokenScope.DATA_OWN)
     @autoDescribeRoute(
@@ -121,16 +99,7 @@ class Run(AbstractVRResource):
                        'tale)', 403)
     )
     def delete(self, rfolder: dict) -> None:
-        path = Path(rfolder['fsPath'])
-        trashDir = path.parent / '.trash'
-
-        version = Folder().load(
-            rfolder['runVersionId'], level=AccessType.WRITE, user=self.getCurrentUser()
-        )
-
-        Folder().remove(rfolder)
-        shutil.move(path.as_posix(), trashDir)
-        Version._decrementReferenceCount(version)
+        self.model.remove(rfolder, self.getCurrentUser())
 
     @access.user(TokenScope.DATA_READ)
     @filtermodel('folder')
@@ -172,11 +141,7 @@ class Run(AbstractVRResource):
                        'this run)', 403)
     )
     def status(self, rfolder: dict) -> dict:
-        if FIELD_STATUS_CODE in rfolder:
-            rs = RunStatus.get(rfolder[FIELD_STATUS_CODE])
-        else:
-            rs = RunStatus.UNKNOWN
-        return {'status': rs.code, 'statusString': rs.name}
+        return self.model.getStatus(rfolder)
 
     @access.user(TokenScope.DATA_WRITE)
     @autoDescribeRoute(
@@ -189,59 +154,7 @@ class Run(AbstractVRResource):
                        'this run)', 403)
     )
     def setStatus(self, rfolder: dict, status: Union[int, RunState]) -> None:
-        self._setStatus(rfolder, status)
-
-    def _setStatus(self, rfolder: dict, status: Union[int, RunState]) -> None:
-        # TODO: add heartbeats (runs must regularly update status, otherwise they are considered
-        # failed)
-        if isinstance(status, int):
-            _status = RunState.ALL[status]
-        else:
-            _status = status
-        rfolder[FIELD_STATUS_CODE] = _status.code
-        Folder().save(rfolder)
-        runDir = Path(rfolder['fsPath'])
-        self._write_status(runDir, _status)
-
-    def _create(self, version: dict, name: Optional[str], root: dict, rootDir: Path) -> dict:
-        if not name:
-            name = self._generateName()
-
-        runFolder = self._createSubdir(rootDir, root, name, user=self.getCurrentUser())
-
-        runFolder['runVersionId'] = version['_id']
-        runFolder[FIELD_STATUS_CODE] = RunStatus.UNKNOWN.code
-        Folder().save(runFolder, False)
-
-        # Structure is:
-        #  @version -> ../Versions/<version> (link handled manually by FS)
-        #  @workspace -> version/workspace (same)
-        #  .status
-        #  .stdout (created using stream() above)
-        #  .stderr (-''-)
-        runDir = Path(runFolder["fsPath"])
-        tale_id = runDir.parts[-2]
-        # TODO: a lot assumptions hardcoded below...
-        (runDir / 'version').symlink_to(
-            f"../../../../versions/{tale_id[:2]}/{tale_id}/{version['_id']}", True
-        )
-        (runDir / 'workspace').mkdir()
-        self._snapshotRecursive(
-            None,
-            (runDir / "version" / "workspace"),
-            (runDir / "workspace")
-        )
-        self._write_status(runDir, RunStatus.UNKNOWN)
-
-        return runFolder
-
-    def _write_status(self, runDir: Path, status: RunState):
-        with open(runDir / '.status', 'w') as f:
-            f.write('%s %s' % (status.code, status.name))
-
-    def _generateName(self):
-        now = datetime.now()
-        return now.strftime(RUN_NAME_FORMAT)
+        self.model.setStatus(rfolder, status)
 
     @access.user
     @autoDescribeRoute(

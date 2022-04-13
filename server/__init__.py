@@ -12,9 +12,10 @@ from girder.models.user import User
 from girder.utility import setting_utilities
 from girder.plugins.wholetale.lib.manifest import Manifest
 from girder.plugins.wholetale.models.tale import Tale
-from .resources.version import Version, FIELD_CRITICAL_SECTION_FLAG
-from .resources.run import Run, FIELD_STATUS_CODE
-from .constants import PluginSettings, Constants
+from .lib.version_hierarchy import VersionHierarchyModel
+from .resources.version import Version
+from .resources.run import Run
+from .constants import PluginSettings, Constants, FIELD_STATUS_CODE
 from .lib import util
 
 
@@ -24,11 +25,6 @@ from .lib import util
 })
 def validateOtherSettings(event):
     pass
-
-
-def setDefaults() -> None:
-    SettingDefault.defaults[PluginSettings.VERSIONS_DIRS_ROOT] = '/tmp/wt/versions'
-    SettingDefault.defaults[PluginSettings.RUNS_DIRS_ROOT] = '/tmp/wt/runs'
 
 
 def _createAuxFolder(tale, name, rootProp, creator):
@@ -66,16 +62,6 @@ def removeVersionsAndRuns(event: events.Event) -> None:
         Folder().remove(root)
     shutil.rmtree(util.getTaleVersionsDirPath(tale))
     shutil.rmtree(util.getTaleRunsDirPath(tale))
-
-
-def createIndex() -> None:
-    Folder().ensureIndex('created')
-
-
-def resetCrashedCriticalSections():
-    Folder().update(
-        {FIELD_CRITICAL_SECTION_FLAG: True}, {'$set': {FIELD_CRITICAL_SECTION_FLAG: False}}
-    )
 
 
 def copyVersionsAndRuns(event: events.Event) -> None:
@@ -150,9 +136,10 @@ def copyVersionsAndRuns(event: events.Event) -> None:
 
 
 def load(info):
-    setDefaults()
-    createIndex()
-    resetCrashedCriticalSections()
+    SettingDefault.defaults[PluginSettings.VERSIONS_DIRS_ROOT] = '/tmp/wt/versions'
+    SettingDefault.defaults[PluginSettings.RUNS_DIRS_ROOT] = '/tmp/wt/runs'
+    Folder().ensureIndex('created')
+    VersionHierarchyModel().resetCrashedCriticalSections()
 
     events.bind('model.tale.save.created', 'wt_versioning', addVersionsAndRuns)
     events.bind('model.tale.remove', 'wt_versioning', removeVersionsAndRuns)

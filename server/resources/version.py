@@ -1,12 +1,6 @@
-import json
-import shutil
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-import pymongo
-from bson import ObjectId
-from girder import events, logger
+from girder import events
 from girder.api import access
 from girder.api.describe import Description, autoDescribeRoute
 from girder.api.rest import filtermodel
@@ -21,16 +15,11 @@ from girder.plugins.virtual_resources.rest import VirtualObject
 
 from ..constants import Constants
 from ..lib import util
+from ..lib.version_hierarchy import VersionHierarchyModel
 from .abstract_resource import AbstractVRResource
-
-FIELD_CRITICAL_SECTION_FLAG = 'versionsCriticalSectionFlag'
-FIELD_REFERENCE_COUNTER = 'versionsRefCount'
-FIELD_SEQENCE_NUMBER = 'seq'
-VERSION_NAME_FORMAT = '%c'
 
 
 class Version(AbstractVRResource):
-    root_tale_field = "versionsRootId"
 
     def __init__(self, tale_node):
         super().__init__('version', Constants.VERSIONS_ROOT_DIR_NAME)
@@ -41,6 +30,7 @@ class Version(AbstractVRResource):
         events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
         events.bind("rest.put.version/:id.after", "wt_versioning", self.update_parents)
         events.bind("rest.delete.version/:id.before", "wt_versioning", self.update_parents)
+        self.model = VersionHierarchyModel()
 
     @access.user(TokenScope.DATA_WRITE)
     @filtermodel('folder')
@@ -128,20 +118,20 @@ class Version(AbstractVRResource):
         allowRename: bool = False
     ) -> dict:
         if not name:
-            name = self._generateName()
+            name = self.model.generateName()
         user = self.getCurrentUser()
 
-        root = self._getRootFromTale(tale, user=user, level=AccessType.WRITE)
-        name = self._checkNameSanity(name, root, allow_rename=allowRename)
+        root = self.model.getRootFromTale(tale, user=user, level=AccessType.WRITE)
+        name = self.model.checkNameSanity(name, root, allow_rename=allowRename)
 
-        if not Version._setCriticalSectionFlag(root):
+        if not self.model.setCriticalSectionFlag(root):
             raise RestException('Another operation is in progress. Try again later.', 409)
         try:
             rootDir = util.getTaleVersionsDirPath(tale)
-            return self._create(tale, name, rootDir, root, user=user, force=force)
+            return self.model.create(tale, name, rootDir, root, user=user, force=force)
         finally:
             # probably need a better way to deal with hard crashes here
-            Version._resetCriticalSectionFlag(root)
+            self.model.resetCriticalSectionFlag(root)
             Tale().updateTale(tale)
 
     @access.user(TokenScope.DATA_WRITE)
@@ -168,27 +158,7 @@ class Version(AbstractVRResource):
         .errorResponse("Version is in use by a run and cannot be deleted.", 461)
     )
     def restore(self, tale: dict, version: dict):
-        user = self.getCurrentUser()
-        version_root = Folder().load(version["parentId"], user=user, level=AccessType.READ)
-
-        workspace = Folder().load(tale["workspaceId"], force=True)
-        workspace_path = Path(workspace["fsPath"])
-        version = Folder().load(version["_id"], force=True, fields=["fsPath"])
-        version_workspace_path = Path(version["fsPath"]) / "workspace"
-
-        if not Version._setCriticalSectionFlag(version_root):
-            raise RestException('Another operation is in progress. Try again later.', 409)
-        try:
-            # restore workspace
-            shutil.rmtree(workspace_path)
-            workspace_path.mkdir()
-            self._snapshotRecursive(None, version_workspace_path, workspace_path)
-            # restore Tale
-            tale.update(self._restoreTaleFromVersion(version))
-            return Tale().save(tale)
-        finally:
-            # probably need a better way to deal with hard crashes here
-            Version._resetCriticalSectionFlag(version_root)
+        return self.model.restore(tale, version, self.getCurrentUser())
 
     @access.user(TokenScope.DATA_READ)
     @filtermodel(model="tale", plugin="wholetale")
@@ -218,49 +188,23 @@ class Version(AbstractVRResource):
     )
     def restoreView(self, tale: dict, version: dict):
         version = Folder().load(version["_id"], force=True, fields=["fsPath"])
-        tale.update(self._restoreTaleFromVersion(version))
+        tale.update(self.model.restoreTaleFromVersion(version))
         tale["workspaceId"] = VirtualObject().generate_id(
             Path(version["fsPath"]) / "workspace", version["_id"]
         )
         return tale
 
-    def _restoreTaleFromVersion(self, version, annotate=True):
-        version_path = Path(version["fsPath"])
-        with open((version_path / "manifest.json").as_posix(), "r") as fp:
-            manifest = json.load(fp)
-        with open((version_path / "environment.json").as_posix(), "r") as fp:
-            env = json.load(fp)
-        restored_tale = Tale().restoreTale(manifest, env)
-        if annotate:
-            restored_tale["restoredFrom"] = version["_id"]
-        return restored_tale
-
     @access.user(TokenScope.DATA_OWN)
     @autoDescribeRoute(
         Description('Deletes a version.')
         .modelParam('id', 'The ID of version folder', model=Folder, level=AccessType.ADMIN,
-                    destName='vfolder')
+                    destName='version')
         .errorResponse('Access was denied (if current user does not have write access to this '
                        'tale)', 403)
         .errorResponse('Version is in use by a run and cannot be deleted.', 461)
     )
-    def delete(self, vfolder: dict) -> None:
-        root = Folder().load(vfolder['parentId'], force=True)
-        Version._setCriticalSectionFlag(root)
-        try:
-            # make sure we use information protected by the critical section
-            vfolder = Folder().load(vfolder['_id'], force=True)
-            if FIELD_REFERENCE_COUNTER in vfolder and vfolder[FIELD_REFERENCE_COUNTER] > 0:
-                raise RestException('Version is in use by a run and cannot be deleted.', 461)
-        finally:
-            Version._resetCriticalSectionFlag(root)
-
-        path = Path(vfolder['fsPath'])
-        trashDir = path.parent / '.trash'
-        Folder().remove(vfolder)
-
-        shutil.move(path.as_posix(), trashDir)
-        Tale().updateTale(Tale().load(root["taleId"], force=True))
+    def delete(self, version: dict) -> None:
+        self.model.remove(version, self.getCurrentUser())
 
     @access.user(TokenScope.DATA_READ)
     @filtermodel('folder')
@@ -307,180 +251,3 @@ class Version(AbstractVRResource):
             # We're using 'updated' field to bump the version to the top of
             # Folder().list(). We're gonna update it either way later on.
             Folder().updateFolder(version)
-
-    @classmethod
-    def _incrementReferenceCount(cls, vfolder):
-        if FIELD_REFERENCE_COUNTER not in vfolder:
-            vfolder[FIELD_REFERENCE_COUNTER] = 0
-        cls._updateReferenceCount(vfolder, 1)
-
-    @classmethod
-    def _decrementReferenceCount(cls, vfolder):
-        cls._updateReferenceCount(vfolder, -1)
-
-    @classmethod
-    def _updateReferenceCount(cls, vfolder: dict, n: int):
-        root = Folder().load(vfolder['parentId'], force=True)
-        cls._setCriticalSectionFlag(root)
-        try:
-            vfolder[FIELD_REFERENCE_COUNTER] += n
-            vfolder = Folder().save(vfolder)
-        except KeyError:
-            pass
-        finally:
-            cls._resetCriticalSectionFlag(root)
-
-    @classmethod
-    def _setCriticalSectionFlag(cls, root: dict) -> bool:
-        return cls._updateCriticalSectionFlag(root, True)
-
-    @classmethod
-    def _resetCriticalSectionFlag(cls, root: dict) -> bool:
-        return cls._updateCriticalSectionFlag(root, False)
-
-    @classmethod
-    def _updateCriticalSectionFlag(cls, root: dict, value: bool) -> bool:
-        result = Folder().update(
-            query={
-                '_id': root['_id'],
-                FIELD_CRITICAL_SECTION_FLAG: {'$ne': value}
-            },
-            update={
-                '$set': {
-                    FIELD_CRITICAL_SECTION_FLAG: value
-                },
-                '$inc': {
-                    FIELD_SEQENCE_NUMBER: 1
-                }
-            },
-            multi=False)
-        return result.matched_count > 0
-
-    def _create(
-        self, tale: dict, name: Optional[str], versionsDir: Path,
-        versionsRoot: dict, user=None, force=False
-    ) -> dict:
-        last = self._getLastVersion(versionsRoot)
-        last_restore = Folder().load(tale.get("restoredFrom", ObjectId()), force=True)
-        workspace = Folder().load(tale["workspaceId"], force=True)
-        crtWorkspace = Path(workspace["fsPath"])
-
-        # NOTE: order is important, we want oldWorkspace -> last.workspace
-        for version in (last_restore, last):
-            oldWorkspace = None if version is None else Path(version["fsPath"]) / "workspace"
-            if not force and self._is_same(tale, version, user) and \
-                    self._sameTree(oldWorkspace, crtWorkspace):
-                assert version is not None
-                raise RestException('Not modified', code=303, extra=str(version['_id']))
-
-        new_version = self._createSubdir(versionsDir, versionsRoot, name, user=user)
-
-        try:
-            self.snapshot(last, tale, new_version, user=user, force=force)
-            return new_version
-        except Exception:  # NOQA
-            try:
-                shutil.rmtree(new_version["fsPath"])
-                Folder().remove(new_version)
-            except Exception as ex:  # NOQA
-                logger.warning('Exception caught while rolling back version ckeckpoint.', ex)
-            raise
-
-    def _getLastVersion(self, versionsFolder: dict) -> Optional[dict]:
-        # The versions root folder is kept as a pure Girder folder.
-        # This is because there is no efficient way to
-        # say "give me the latest subdir" on a POSIX filesystem.
-        return Folder().findOne(
-            {'parentId': versionsFolder['_id']}, sort=[('created', pymongo.DESCENDING)]
-        )
-
-    def _generateName(self):
-        now = datetime.now()
-        return now.strftime(VERSION_NAME_FORMAT)
-
-    def snapshot(
-        self,
-        version: Optional[dict],
-        tale: dict,
-        new_version: dict,
-        user=None,
-        force=False
-    ) -> None:
-        """Creates a new version from the current state and an old version. The implementation
-        here differs a bit from
-        https://docs.google.com/document/d/1b2xZtIYvgVXz7EVeV-C18So_a7QLGg59dPQMxvBcA5o since
-        the document assumes traditional use of Girder objects to simulate a filesystem, whereas
-        the current reality is that we are moving more towards Girder being a thin layer on top
-        of an actual FS (i.e. virtual_resources). In particular, the data folder remains in the
-        domain of the DMS, meaning that actual files are only downloaded on demand. The current
-        implementation of the virtual objects does not seem to have a straightforward way of
-        embedding pure girder folders inside a virtual tree. The solution currently adopted to
-        address this issue involves storing the dataset in the version folder itself, which, for
-        efficiency reasons remains a Girder folder (but also a virtual_resources root).
-
-        It may be relevant to note that this implementation uses option (b) in the above document
-        with respect to the meaning of "copy" in step 4.1.2.1. To be more precise, when a file is
-        changed in the current workspace, the new version will hard link to the file in question
-        instead of doing an actual copy. This allows for O(1) equality comparisons between files,
-        but requires that modifications to files in the workspace always create a new file (which
-        is the case if files are only modified through the WebDAV FS mounted in a tale container).
-        """
-        new_version_path = Path(new_version["fsPath"])
-        manifest = Manifest(tale, user, versionId=new_version["_id"], expand_folders=False)
-        with open((new_version_path / "manifest.json").as_posix(), "w") as fp:
-            fp.write(manifest.dump_manifest())
-
-        with open((new_version_path / "environment.json").as_posix(), "w") as fp:
-            fp.write(manifest.dump_environment())
-
-        oldWorkspace = None if version is None else Path(version["fsPath"]) / "workspace"
-        workspace = Folder().load(tale["workspaceId"], force=True)
-        crtWorkspace = Path(workspace["fsPath"])
-        newWorkspace = new_version_path / 'workspace'
-        newWorkspace.mkdir()
-        self._snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
-
-    def _is_same(self, tale, version, user):
-        workspace = Folder().load(tale["workspaceId"], force=True)
-        tale_workspace_path = Path(workspace["fsPath"])
-
-        version_path = None if version is None else Path(version["fsPath"])
-        version_workspace_path = None if version_path is None else version_path / "workspace"
-
-        manifest_obj = Manifest(tale, user)
-        manifest = json.loads(manifest_obj.dump_manifest())
-        environment = json.loads(manifest_obj.dump_environment())
-        tale_restored_from_wrk = Tale().restoreTale(manifest, environment)
-        tale_restored_from_ver = \
-            self._restoreTaleFromVersion(version, annotate=False) if version else None
-
-        if self._sameTaleMetadata(tale_restored_from_ver, tale_restored_from_wrk) and \
-                self._sameTree(version_workspace_path, tale_workspace_path):
-            raise RestException('Not modified', code=303, extra=str(version["_id"]))
-
-    def _sameTaleMetadata(self, old: Optional[dict], crt: dict):
-        if old is None:
-            return False
-        return old == crt
-
-    def _sameTree(self, old: Optional[Path], crt: Path) -> bool:
-        if old is None:
-            return False
-        for c in crt.iterdir():
-            oldc = old / c.name
-            crtc = crt / c.name
-
-            if not oldc.exists():
-                return False
-
-            if crtc.is_dir() != oldc.is_dir():
-                return False
-
-            if crtc.is_dir():
-                if not self._sameTree(oldc, crtc):
-                    return False
-            else:
-                if not oldc.samefile(crtc):
-                    return False
-
-        return True
