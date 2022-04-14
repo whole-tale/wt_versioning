@@ -72,7 +72,9 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         elif root_id_key == "runsRootId":
             return util.getTaleRunsDirPath(tale)
 
-    old_tale, new_tale, target_version_id = event.info
+    old_tale, new_tale, target_version_id, shallow = event.info
+    if shallow and not target_version_id:
+        return
     creator = User().load(new_tale["creatorId"], force=True)
     versions_map = {}
     for root_id_key in ("versionsRootId", "runsRootId"):
@@ -85,6 +87,8 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         old_root_path = get_dir_path(root_id_key, old_tale)
         new_root_path = get_dir_path(root_id_key, new_tale)
         for src in Folder().childFolders(old_root, "folder", user=creator):
+            if shallow and str(src["_id"]) != target_version_id:
+                continue
             dst = Folder().createFolder(
                 new_root, src["name"], creator=creator
             )
