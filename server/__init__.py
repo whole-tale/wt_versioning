@@ -129,8 +129,10 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         new_tale["versionsRootId"], user=creator, level=AccessType.WRITE
     )
     for version in Folder().childFolders(versions_root, "folder", user=creator):
+        tale = copy.deepcopy(new_tale)
+        tale.update(VersionHierarchyModel().restoreTaleFromVersion(version))
         manifest = Manifest(
-            new_tale, creator, versionId=version["_id"], expand_folders=False
+            tale, creator, versionId=version["_id"], expand_folders=False
         )
         dst_path = pathlib.Path(version["fsPath"])
         with open(dst_path / "manifest.json", "w") as fp:
