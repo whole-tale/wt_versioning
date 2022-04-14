@@ -1,6 +1,6 @@
 name: WholeTale Versioning Plugin
 description: Implements tale versioning and runs
-version: 1.1
+version: "1.2.dev0"
 dependencies:
     - wt_data_manager
     - wholetale
