@@ -72,7 +72,9 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         elif root_id_key == "runsRootId":
             return util.getTaleRunsDirPath(tale)
 
-    old_tale, new_tale = event.info
+    old_tale, new_tale, target_version_id, shallow = event.info
+    if shallow and not target_version_id:
+        return
     creator = User().load(new_tale["creatorId"], force=True)
     versions_map = {}
     for root_id_key in ("versionsRootId", "runsRootId"):
@@ -85,6 +87,8 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         old_root_path = get_dir_path(root_id_key, old_tale)
         new_root_path = get_dir_path(root_id_key, new_tale)
         for src in Folder().childFolders(old_root, "folder", user=creator):
+            if shallow and str(src["_id"]) != target_version_id:
+                continue
             dst = Folder().createFolder(
                 new_root, src["name"], creator=creator
             )
@@ -125,14 +129,20 @@ def copyVersionsAndRuns(event: events.Event) -> None:
         new_tale["versionsRootId"], user=creator, level=AccessType.WRITE
     )
     for version in Folder().childFolders(versions_root, "folder", user=creator):
+        tale = copy.deepcopy(new_tale)
+        tale.update(VersionHierarchyModel().restoreTaleFromVersion(version))
         manifest = Manifest(
-            new_tale, creator, versionId=version["_id"], expand_folders=False
+            tale, creator, versionId=version["_id"], expand_folders=False
         )
         dst_path = pathlib.Path(version["fsPath"])
         with open(dst_path / "manifest.json", "w") as fp:
             fp.write(manifest.dump_manifest())
 
     Folder().updateFolder(versions_root)
+    if target_version_id:
+        new_version_id = versions_map[str(target_version_id)]
+        target_version = Folder().load(new_version_id, level=AccessType.READ, user=creator)
+        VersionHierarchyModel().restore(new_tale, target_version, creator)
 
 
 def load(info):
