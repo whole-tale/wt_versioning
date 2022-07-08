@@ -75,7 +75,7 @@ class Version(AbstractVRResource):
         Session().loadObjects(dataSet)
         return dataSet
 
-    @access.user(TokenScope.DATA_READ)
+    @access.public
     @filtermodel("folder")
     @autoDescribeRoute(
         Description('Returns a version.')
@@ -206,7 +206,7 @@ class Version(AbstractVRResource):
     def delete(self, version: dict) -> None:
         self.model.remove(version, self.getCurrentUser())
 
-    @access.user(TokenScope.DATA_READ)
+    @access.public
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Lists versions.')
