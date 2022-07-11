@@ -30,7 +30,7 @@ class Run(AbstractVRResource):
         events.bind('jobs.job.update.after', 'wt_versioning', self.updateRunStatus)
         self.model = RunHierarchyModel()
 
-    @access.user()
+    @access.public
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Retrieves the runs root folder for this tale.')
@@ -56,7 +56,7 @@ class Run(AbstractVRResource):
     def rename(self, rfolder: dict, name: str) -> dict:
         return super().rename(rfolder, name)
 
-    @access.user(TokenScope.DATA_READ)
+    @access.public
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Returns a run.')
@@ -101,7 +101,7 @@ class Run(AbstractVRResource):
     def delete(self, rfolder: dict) -> None:
         self.model.remove(rfolder, self.getCurrentUser())
 
-    @access.user(TokenScope.DATA_READ)
+    @access.public
     @filtermodel('folder')
     @autoDescribeRoute(
         Description('Lists runs.')
