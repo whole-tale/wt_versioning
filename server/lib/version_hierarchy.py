@@ -94,6 +94,28 @@ class VersionHierarchyModel(AbstractHierarchyModel):
             # probably need a better way to deal with hard crashes here
             self.resetCriticalSectionFlag(version_root)
 
+        # Handle dataDir
+        root_data_folder = Folder().load(tale["dataDirId"], force=True)
+        current_data_folder = Folder().findOne({
+            "parentId": tale["dataDirId"],
+            "name": "current",
+            "parentCollection": "folder",
+        })
+        Folder().remove(current_data_folder)
+        version_data_folder = Folder().findOne({
+            "parentId": tale["dataDirId"],
+            "name": str(version["_id"]),
+            "parentCollection": "folder",
+        })
+
+        Folder().copyFolder(
+            version_data_folder,
+            parent=root_data_folder,
+            name="current",
+            parentType="folder",
+            creator=user,
+        )
+
     @staticmethod
     def restoreTaleFromVersion(version, annotate=True):
         version_path = Path(version["fsPath"])
