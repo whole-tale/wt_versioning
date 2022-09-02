@@ -30,6 +30,7 @@ class Version(AbstractVRResource):
         events.bind("rest.put.tale/:id/publish.before", "wt_versioning", self.ensure_version)
         events.bind("rest.put.version/:id.after", "wt_versioning", self.update_parents)
         events.bind("rest.delete.version/:id.before", "wt_versioning", self.update_parents)
+        events.bind("tale.view_restored", "wt_versioning", self.restoreViewEvent)
         self.model = VersionHierarchyModel()
 
     @access.user(TokenScope.DATA_WRITE)
@@ -187,6 +188,13 @@ class Version(AbstractVRResource):
         )
     )
     def restoreView(self, tale: dict, version: dict):
+        return self._restoreView(tale, version)
+
+    def restoreViewEvent(self, event: events.Event):
+        tale = self._restoreView(event.info["tale"], event.info["version"])
+        event.preventDefault().addResponse(tale)
+
+    def _restoreView(self, tale: dict, version: dict):
         version = Folder().load(version["_id"], force=True, fields=["fsPath"])
         tale.update(self.model.restoreTaleFromVersion(version))
         tale["workspaceId"] = VirtualObject().generate_id(
