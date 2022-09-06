@@ -1,9 +1,11 @@
+from bson import ObjectId
 import copy
 import json
 import os
 import pathlib
 import time
 
+from girder import events
 from girder.models.folder import Folder
 from girder.models.setting import Setting
 from tests import base
@@ -34,10 +36,13 @@ class VersionTestCase(BaseTestCase):
 
     def _compare_tales(self, restored_tale, original_tale):
         for key in restored_tale.keys():
-            if key in ("created", "updated", "restoredFrom", "imageInfo"):
+            if key in ("created", "updated", "restoredFrom", "imageInfo", "workspaceId"):
                 continue
             try:
-                self.assertEqual(restored_tale[key], original_tale[key])
+                if isinstance(restored_tale[key], ObjectId):
+                    self.assertEqual(str(restored_tale[key]), original_tale[key])
+                else:
+                    self.assertEqual(restored_tale[key], original_tale[key])
             except AssertionError:
                 print(key)
                 raise
@@ -235,8 +240,15 @@ class VersionTestCase(BaseTestCase):
         self.assertStatusOk(resp)
         view_tale = resp.json
         self.assertTrue(view_tale["workspaceId"].startswith("wtlocal:"))
-        view_tale["workspaceId"] = first_version_tale["workspaceId"]
-        self._compare_tales(resp.json, first_version_tale)
+        self._compare_tales(view_tale, first_version_tale)
+
+        # Do the same thing via event
+        event = events.trigger(
+            "tale.view_restored", info={"tale": tale, "version": version}
+        )
+        event_tale = Tale().filter(event.responses[0], self.user_one)
+        self.assertEqual(event_tale["workspaceId"], view_tale["workspaceId"])
+        self._compare_tales(event_tale, first_version_tale)
 
         # Restore First Version
         resp = self.request(
