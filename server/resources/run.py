@@ -193,8 +193,9 @@ class Run(AbstractVRResource):
             args=[str(run['_id']), str(tale['_id']), entrypoint],
             girder_job_other_fields={
                 'wt_notification_id': str(notification['_id']),
+                'token': token["_id"],
             },
-            girder_client_token=str(token['_id']),
+            girder_client_token=token["_id"],
         ).apply_async()
 
         return Job().filter(rrTask.job, user=user)
