@@ -1,4 +1,5 @@
 import json
+import mock
 import os
 import time
 
@@ -28,7 +29,13 @@ def tearDownModule():
 
 
 class CopyVersionAndRunsTestCase(BaseTestCase):
-    def testCopyVersion(self):
+
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def testCopyVersion(self, mock_builder):
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
 
@@ -80,7 +87,12 @@ class CopyVersionAndRunsTestCase(BaseTestCase):
         self.assertStatusOk(resp)
         self._remove_example_tale(tale)
 
-    def testFullCopy(self):
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def testFullCopy(self, mock_builder):
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
 

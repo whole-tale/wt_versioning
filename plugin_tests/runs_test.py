@@ -29,7 +29,13 @@ def tearDownModule():
 
 
 class RunsTestCase(BaseTestCase):
-    def testBasicRunsOps(self):
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def testBasicRunsOps(self, mock_builder):
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
+
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
 
@@ -167,8 +173,13 @@ class RunsTestCase(BaseTestCase):
         )
         self.assertStatusOk(resp)
 
-    @mock.patch('gwvolman.tasks.recorded_run')
-    def testRecordedRun(self, rr):
+    @mock.patch("gwvolman.tasks.recorded_run")
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def testRecordedRun(self, rr, mock_builder):
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
 
