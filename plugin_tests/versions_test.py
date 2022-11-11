@@ -1,6 +1,7 @@
 from bson import ObjectId
 import copy
 import json
+import mock
 import os
 import pathlib
 import time
@@ -47,8 +48,14 @@ class VersionTestCase(BaseTestCase):
                 print(key)
                 raise
 
-    def testBasicVersionOps(self):
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def testBasicVersionOps(self, mock_builder):
         from girder.plugins.wt_versioning.constants import PluginSettings
+
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
 
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
@@ -360,7 +367,12 @@ class VersionTestCase(BaseTestCase):
         # Clean up
         self._remove_example_tale(tale)
 
-    def testDatasetHandling(self):
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def testDatasetHandling(self, mock_builder):
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
         tale = self._create_example_tale(dataset=self.get_dataset([0]))
         resp = self.request(
             path="/version",
@@ -381,7 +393,12 @@ class VersionTestCase(BaseTestCase):
 
         self._remove_example_tale(tale)
 
-    def test_force_version(self):
+    @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
+    def test_force_version(self, mock_builder):
+        mock_builder.return_value.container_config.repo2docker_version = \
+            "craigwillis/repo2docker:latest"
+        mock_builder.return_value.get_tag.return_value = \
+            "some_image_digest"
         tale = self._create_example_tale(dataset=self.get_dataset([0]))
         # Check that the tale has no versions.
         resp = self.request(

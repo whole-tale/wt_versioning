@@ -1,3 +1,4 @@
+import datetime
 from typing import Union
 
 from girder import events
@@ -181,7 +182,8 @@ class Run(AbstractVRResource):
             'tale_title': tale['title']
         }
 
-        token = Token().createToken(user=user, days=0.5)
+        # Recorded run can run for a long time. Should we set a limit?
+        token = Token().createToken(user=user, days=60)
 
         notification = init_progress(
             resource, user, 'Recorded run',
@@ -191,11 +193,24 @@ class Run(AbstractVRResource):
             args=[str(run['_id']), str(tale['_id']), entrypoint],
             girder_job_other_fields={
                 'wt_notification_id': str(notification['_id']),
+                'token': token["_id"],
             },
-            girder_client_token=str(token['_id']),
+            girder_client_token=token["_id"],
         ).apply_async()
 
         return Job().filter(rrTask.job, user=user)
+
+    @staticmethod
+    def _expire_job_token(job):
+        """Given a job's girderToken in headers set its expiration to 1h"""
+        try:
+            token_id = job["jobInfoSpec"]["headers"]["Girder-Token"]
+        except KeyError:
+            return
+
+        if token := Token().load(token_id, force=True, objectId=False):
+            token["expires"] = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+            Token().save(token)
 
     def updateRunStatus(self, event):
         """
@@ -211,8 +226,10 @@ class Run(AbstractVRResource):
 
             if status == JobStatus.SUCCESS:
                 rfolder[FIELD_STATUS_CODE] = RunStatus.COMPLETED.code
+                self._expire_job_token(job)
             elif status == JobStatus.ERROR:
                 rfolder[FIELD_STATUS_CODE] = RunStatus.FAILED.code
+                self._expire_job_token(job)
             elif status in (JobStatus.QUEUED, JobStatus.RUNNING):
                 rfolder[FIELD_STATUS_CODE] = RunStatus.RUNNING.code
 
