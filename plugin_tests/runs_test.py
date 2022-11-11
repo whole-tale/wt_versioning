@@ -1,8 +1,11 @@
-import os
 import json
-import mock
+import os
+import time
+from datetime import datetime, timedelta
 
+import mock
 from girder.models.folder import Folder
+from girder.models.token import Token
 from tests import base
 
 from .utils import BaseTestCase
@@ -28,13 +31,22 @@ def tearDownModule():
     base.stopServer()
 
 
+class FakeAsyncResult(object):
+    def __init__(self, tale_id=None):
+        self.task_id = "fake_id"
+        self.tale_id = tale_id
+
+    def get(self, timeout=None):
+        return None
+
+
 class RunsTestCase(BaseTestCase):
     @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
     def testBasicRunsOps(self, mock_builder):
-        mock_builder.return_value.container_config.repo2docker_version = \
+        mock_builder.return_value.container_config.repo2docker_version = (
             "craigwillis/repo2docker:latest"
-        mock_builder.return_value.get_tag.return_value = \
-            "some_image_digest"
+        )
+        mock_builder.return_value.get_tag.return_value = "some_image_digest"
 
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
@@ -176,10 +188,10 @@ class RunsTestCase(BaseTestCase):
     @mock.patch("gwvolman.tasks.recorded_run")
     @mock.patch("girder.plugins.wholetale.lib.manifest.ImageBuilder")
     def testRecordedRun(self, rr, mock_builder):
-        mock_builder.return_value.container_config.repo2docker_version = \
+        mock_builder.return_value.container_config.repo2docker_version = (
             "craigwillis/repo2docker:latest"
-        mock_builder.return_value.get_tag.return_value = \
-            "some_image_digest"
+        )
+        mock_builder.return_value.get_tag.return_value = "some_image_digest"
         tale = self._create_example_tale(self.get_dataset([0]))
         workspace = Folder().load(tale["workspaceId"], force=True)
 
@@ -202,46 +214,97 @@ class RunsTestCase(BaseTestCase):
             path="/run",
             method="POST",
             user=self.user_one,
-            params={"versionId": version["_id"], "name": "r1"}
+            params={"versionId": version["_id"], "name": "r1"},
         )
         self.assertStatusOk(resp)
         run = resp.json
 
-        with mock.patch('girder_worker.task.celery.Task.apply_async', spec=True) \
-                as mock_apply_async:
+        with mock.patch(
+            "girder_worker.task.celery.Task.apply_async", spec=True
+        ) as mock_apply_async:
 
-            mock_apply_async().job.return_value = json.dumps({'job': 1, 'blah': 2})
+            mock_apply_async().job.return_value = json.dumps({"job": 1, "blah": 2})
 
             # Test default entrypoint
             resp = self.request(
-                path='/run/%s/start' % run["_id"],
-                method="POST",
-                user=self.user_one
+                path="/run/%s/start" % run["_id"], method="POST", user=self.user_one
             )
             job_call = mock_apply_async.call_args_list[-1][-1]
             self.assertEqual(
-                job_call['args'], (str(run['_id']), (str(tale['_id'])), "run.sh")
+                job_call["args"], (str(run["_id"]), (str(tale["_id"])), "run.sh")
             )
-            self.assertEqual(job_call['headers']['girder_job_title'], 'Recorded Run')
+            self.assertEqual(job_call["headers"]["girder_job_title"], "Recorded Run")
             self.assertStatusOk(resp)
 
         # Test default entrypoint
-        with mock.patch('girder_worker.task.celery.Task.apply_async', spec=True) \
-                as mock_apply_async:
+        with mock.patch(
+            "girder_worker.task.celery.Task.apply_async", spec=True
+        ) as mock_apply_async:
 
-            mock_apply_async().job.return_value = json.dumps({'job': 1, 'blah': 2})
+            mock_apply_async().job.return_value = json.dumps({"job": 1, "blah": 2})
 
             resp = self.request(
-                path='/run/%s/start' % run["_id"],
+                path="/run/%s/start" % run["_id"],
                 method="POST",
                 user=self.user_one,
-                params={"entrypoint": "entrypoint.sh"}
+                params={"entrypoint": "entrypoint.sh"},
             )
             job_call = mock_apply_async.call_args_list[-1][-1]
             self.assertEqual(
-                job_call['args'], (str(run['_id']), (str(tale['_id'])), "entrypoint.sh")
+                job_call["args"], (str(run["_id"]), (str(tale["_id"])), "entrypoint.sh")
             )
-            self.assertEqual(job_call['headers']['girder_job_title'], 'Recorded Run')
+            self.assertEqual(job_call["headers"]["girder_job_title"], "Recorded Run")
             self.assertStatusOk(resp)
 
-        return
+        from girder.plugins.jobs.constants import JobStatus
+        from girder.plugins.jobs.models.job import Job
+        from girder.plugins.wt_versioning.constants import FIELD_STATUS_CODE, RunStatus
+
+        token = Token().createToken(user=self.user_one, days=60)
+        job = Job().createJob(
+            title="Recorded Run",
+            type="celery",
+            handler="worker_handler",
+            user=self.user_one,
+            public=False,
+            args=[str(run["_id"]), str(tale["_id"]), "entrypoint.sh"],
+            kwargs={},
+            otherFields={"token": token["_id"]},
+        )
+        job = Job().save(job)
+        self.assertEqual(job["status"], JobStatus.INACTIVE)
+
+        token_id = job["jobInfoSpec"]["headers"]["Girder-Token"]
+        token = Token().load(token_id, force=True, objectId=False)
+        self.assertTrue(token["expires"] > datetime.utcnow() + timedelta(days=59))
+
+        with mock.patch("celery.Celery") as celeryMock, mock.patch(
+            "girder.plugins.worker.getCeleryApp"
+        ) as gca:
+            celeryMock().AsyncResult.return_value = FakeAsyncResult(tale["_id"])
+            gca().send_task.return_value = FakeAsyncResult(tale["_id"])
+            Job().scheduleJob(job)
+
+            for _ in range(20):
+                job = Job().load(job["_id"], force=True)
+                if job["status"] == JobStatus.QUEUED:
+                    break
+                time.sleep(0.1)
+            self.assertEqual(job["status"], JobStatus.QUEUED)
+            rfolder = Folder().load(job["args"][0], force=True)
+            self.assertEqual(rfolder[FIELD_STATUS_CODE], RunStatus.RUNNING.code)
+
+            # Set status to RUNNING
+            job = Job().load(job["_id"], force=True)
+            Job().updateJob(job, log="job running", status=JobStatus.RUNNING)
+            rfolder = Folder().load(job["args"][0], force=True)
+            self.assertEqual(rfolder[FIELD_STATUS_CODE], RunStatus.RUNNING.code)
+
+            # Set status to SUCCESS
+            job = Job().load(job["_id"], force=True)
+            Job().updateJob(job, log="job successful", status=JobStatus.SUCCESS)
+            rfolder = Folder().load(job["args"][0], force=True)
+            self.assertEqual(rfolder[FIELD_STATUS_CODE], RunStatus.COMPLETED.code)
+
+        token = Token().load(token_id, force=True, objectId=False)
+        self.assertTrue(token["expires"] < datetime.utcnow() + timedelta(hours=2))
