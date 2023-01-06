@@ -68,9 +68,6 @@ class RunHierarchyModel(AbstractHierarchyModel):
             f"../../../../versions/{tale_id[:2]}/{tale_id}/{version['_id']}", True
         )
         (runDir / "workspace").mkdir()
-        self.snapshotRecursive(
-            None, (runDir / "version" / "workspace"), (runDir / "workspace")
-        )
         self.write_status(runDir, RunStatus.UNKNOWN)
 
         Tale().updateTale(tale)
