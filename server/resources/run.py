@@ -198,6 +198,8 @@ class Run(AbstractVRResource):
             girder_client_token=token["_id"],
         ).apply_async()
 
+        Folder().setMetadata(run, {"jobId": str(rrTask.job["_id"])})
+
         return Job().filter(rrTask.job, user=user)
 
     @staticmethod
