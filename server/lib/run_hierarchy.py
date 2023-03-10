@@ -4,7 +4,12 @@ from typing import Optional, Union
 
 from girder.constants import AccessType
 from girder.models.folder import Folder
+from girder.models.user import User
+from girder.models.token import Token
+from girder.plugins.worker import getCeleryApp
 from girder.plugins.wholetale.models.tale import Tale
+from gwvolman.tasks import check_on_run, cleanup_run
+
 from . import util
 from .hierarchy import AbstractHierarchyModel
 from .version_hierarchy import VersionHierarchyModel
@@ -92,3 +97,27 @@ class RunHierarchyModel(AbstractHierarchyModel):
         Folder().remove(rfolder)
         shutil.move(path.as_posix(), trashDir)
         VersionHierarchyModel().decrementReferenceCount(version)
+
+    @staticmethod
+    def run_heartbeat(event):
+        app = getCeleryApp()
+        active_queues = list(app.control.inspect().active_queues().keys())
+        active_runs = Folder().find({FIELD_STATUS_CODE: RunStatus.RUNNING.code})
+        for run in active_runs:
+            queue = f"celery@{run['meta']['node_id']}"
+            delete = queue not in active_queues
+            if not delete:
+                is_running = check_on_run.signature(
+                    args=[run["meta"]],
+                    queue=run["meta"]["node_id"]
+                ).apply_async()
+                delete = not is_running.get(timeout=60)
+
+            if delete:
+                user = User().load(run["creatorId"], force=True)
+                girder_token = Token().createToken(user=user, days=0.1)
+                cleanup_run.signature(
+                    args=[str(run["_id"])],
+                    girder_client_token=str(girder_token["_id"]),
+                    queue=run["meta"]["node_id"],
+                ).apply_async()

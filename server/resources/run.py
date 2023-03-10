@@ -30,6 +30,7 @@ class Run(AbstractVRResource):
         events.bind("rest.delete.run/:id.before", "wt_versioning", self.update_parents)
         events.bind('jobs.job.update.after', 'wt_versioning', self.updateRunStatus)
         self.model = RunHierarchyModel()
+        events.bind("heartbeat", "wt_versioning", self.model.run_heartbeat)
 
     @access.public
     @filtermodel('folder')
