@@ -6,6 +6,7 @@ from girder.constants import AccessType
 from girder.models.folder import Folder
 from girder.models.user import User
 from girder.models.token import Token
+from girder.plugins.jobs.models.job import Job
 from girder.plugins.worker import getCeleryApp
 from girder.plugins.wholetale.models.tale import Tale
 from gwvolman.tasks import check_on_run, cleanup_run
@@ -98,14 +99,30 @@ class RunHierarchyModel(AbstractHierarchyModel):
         shutil.move(path.as_posix(), trashDir)
         VersionHierarchyModel().decrementReferenceCount(version)
 
-    @staticmethod
-    def run_heartbeat(event):
-        app = getCeleryApp()
-        active_queues = list(app.control.inspect().active_queues().keys())
-        active_runs = Folder().find({FIELD_STATUS_CODE: RunStatus.RUNNING.code})
+    def run_heartbeat(self, event):
+        celery_inspector = getCeleryApp().control.inspect()
+        active_queues = list(celery_inspector.active_queues().keys())
+        active_runs = Folder().find(
+            {
+                FIELD_STATUS_CODE: {"$in": [RunStatus.RUNNING.code, RunStatus.UNKNOWN.code]},
+                "meta.container_name": {"$exists": True}
+            }
+        )
         for run in active_runs:
             queue = f"celery@{run['meta']['node_id']}"
-            delete = queue not in active_queues
+            if queue not in active_queues and run[FIELD_STATUS_CODE] == RunStatus.RUNNING.code:
+                # worker is presumed dead so we set run's status to UNK to reap it when it's back
+                # online.
+                self.setStatus(run, RunStatus.UNKNOWN)
+                continue
+
+            active_tasks = {task["id"] for task in celery_inspector.active()[queue]}
+            run_job = Job().load(run["meta"]["jobId"], force=True)
+            run_task_id = run_job["celeryTaskId"]
+
+            # Task is gone, cleanup
+            delete = run_task_id not in active_tasks
+
             if not delete:
                 is_running = check_on_run.signature(
                     args=[run["meta"]],
