@@ -101,7 +101,10 @@ class RunHierarchyModel(AbstractHierarchyModel):
 
     def run_heartbeat(self, event):
         celery_inspector = getCeleryApp().control.inspect()
-        active_queues = list(celery_inspector.active_queues().keys())
+        try:
+            active_queues = list(celery_inspector.active_queues().keys())
+        except AttributeError:  # everything is dead
+            active_queues = []
         active_runs = Folder().find(
             {
                 FIELD_STATUS_CODE: {"$in": [RunStatus.RUNNING.code, RunStatus.UNKNOWN.code]},
