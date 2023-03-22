@@ -113,10 +113,11 @@ class RunHierarchyModel(AbstractHierarchyModel):
         )
         for run in active_runs:
             queue = f"celery@{run['meta']['node_id']}"
-            if queue not in active_queues and run[FIELD_STATUS_CODE] == RunStatus.RUNNING.code:
-                # worker is presumed dead so we set run's status to UNK to reap it when it's back
-                # online.
-                self.setStatus(run, RunStatus.UNKNOWN)
+            if queue not in active_queues:
+                if run[FIELD_STATUS_CODE] == RunStatus.RUNNING.code:
+                    # worker is presumed dead so we set run's status to UNK to reap it
+                    # when it's back online.
+                    self.setStatus(run, RunStatus.UNKNOWN)
                 continue
 
             active_tasks = {task["id"] for task in celery_inspector.active()[queue]}
