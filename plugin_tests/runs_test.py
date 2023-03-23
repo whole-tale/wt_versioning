@@ -308,3 +308,148 @@ class RunsTestCase(BaseTestCase):
 
         token = Token().load(token_id, force=True, objectId=False)
         self.assertTrue(token["expires"] < datetime.utcnow() + timedelta(hours=2))
+
+
+class RunsCleaningTestCase(BaseTestCase):
+    def setUp(self):
+        from girder.plugins.wt_versioning.lib.run_hierarchy import RunHierarchyModel
+        from girder.plugins.jobs.models.job import Job
+
+        self.model = RunHierarchyModel()
+        self.job_model = Job()
+        self.folder_model = Folder()
+        super().setUp()
+
+    def test_run_heartbeat_no_active_queues(self):
+        from girder.plugins.wt_versioning.constants import FIELD_STATUS_CODE, RunStatus
+
+        active_runs = [
+            {
+                "_id": "run_id",
+                "creatorId": self.user_one["_id"],
+                "meta": {
+                    "container_name": "my_container",
+                    "node_id": "my_node",
+                    "jobId": "jobId",
+                },
+                FIELD_STATUS_CODE: RunStatus.RUNNING.code,
+            }
+        ]
+        with mock.patch.object(self.model, "setStatus") as mock_setStatus, mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.getCeleryApp"
+        ) as mock_celery, mock.patch.object(
+            self.folder_model, "find", return_value=active_runs
+        ):
+            mock_inspect = mock.MagicMock()
+            mock_inspect.active_queues.return_value = None
+            mock_celery.return_value.control.inspect.return_value = mock_inspect
+
+            self.model.run_heartbeat(None)
+
+            mock_setStatus.assert_called_once_with(active_runs[0], RunStatus.UNKNOWN)
+
+    def test_run_heartbeat_unknown_run(self):
+        from girder.plugins.wt_versioning.constants import FIELD_STATUS_CODE, RunStatus
+
+        active_runs = [
+            {
+                "_id": "run_id",
+                "creatorId": self.user_one["_id"],
+                "meta": {
+                    "container_name": "my_container",
+                    "node_id": "my_node",
+                    "jobId": "jobId",
+                },
+                FIELD_STATUS_CODE: RunStatus.UNKNOWN.code,
+            }
+        ]
+        with mock.patch.object(self.model, "setStatus") as mock_setStatus, mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.check_on_run"
+        ) as mock_check_on_run, mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.cleanup_run"
+        ) as mock_cleanup_run, mock.patch.object(
+            self.job_model, "load", return_value={"celeryTaskId": "my_task_id"}
+        ) as mock_job_load, mock.patch.object(
+            self.folder_model, "find", return_value=active_runs
+        ), mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.getCeleryApp"
+        ) as mock_celery:
+            mock_inspect = mock.MagicMock()
+            mock_inspect.active_queues.return_value = {"celery@my_node": {}}
+            mock_inspect.active.return_value = {"celery@my_node": []}
+            mock_celery.return_value.control.inspect.return_value = mock_inspect
+
+            self.model.run_heartbeat(None)
+
+            mock_setStatus.assert_not_called()
+            mock_job_load.assert_called_once_with(
+                active_runs[0]["meta"]["jobId"], force=True
+            )
+            mock_check_on_run.assert_not_called()
+            mock_cleanup_run.signature.assert_called_once_with(
+                args=[str(active_runs[0]["_id"])],
+                girder_client_token=mock.ANY,
+                queue="my_node",
+            )
+            mock_cleanup_run.signature().apply_async.assert_called_once()
+        mock_celery.close()
+
+    def test_run_heartbeat_container_dead(self):
+        from girder.plugins.wt_versioning.constants import FIELD_STATUS_CODE, RunStatus
+
+        active_runs = [
+            {
+                "_id": "run_id",
+                "creatorId": self.user_one["_id"],
+                "meta": {
+                    "container_name": "my_container",
+                    "node_id": "my_node",
+                    "jobId": "jobId",
+                },
+                FIELD_STATUS_CODE: RunStatus.RUNNING.code,
+            }
+        ]
+        with mock.patch.object(self.model, "setStatus") as mock_setStatus, mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.check_on_run",
+        ) as mock_check_on_run, mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.cleanup_run"
+        ) as mock_cleanup_run, mock.patch.object(
+            self.job_model, "load", return_value={"celeryTaskId": "my_task_id"}
+        ), mock.patch.object(
+            self.folder_model, "find", return_value=active_runs
+        ), mock.patch(
+            "girder.plugins.wt_versioning.lib.run_hierarchy.getCeleryApp"
+        ) as mock_celery:
+            mock_inspect = mock.MagicMock()
+            mock_inspect.active_queues.return_value = {"celery@my_node": {}}
+            mock_inspect.active.return_value = {
+                "celery@my_node": [{"id": "my_task_id"}]
+            }
+            mock_celery.return_value.control.inspect.return_value = mock_inspect
+            mock_check_on_run.signature.return_value.apply_async.return_value.get.return_value = (
+                False
+            )
+
+            self.model.run_heartbeat(None)
+
+            mock_setStatus.assert_not_called()
+            mock_check_on_run.assert_has_calls(
+                [
+                    mock.call.signature(
+                        args=[active_runs[0]["meta"]],
+                        queue=active_runs[0]["meta"]["node_id"],
+                    ),
+                    mock.call.signature().apply_async(),
+                    mock.call.signature().apply_async().get(timeout=60),
+                ]
+            )
+            mock_cleanup_run.assert_has_calls(
+                [
+                    mock.call.signature(
+                        args=[str(active_runs[0]["_id"])],
+                        girder_client_token=mock.ANY,
+                        queue="my_node",
+                    ),
+                    mock.call.signature().apply_async(),
+                ]
+            )
