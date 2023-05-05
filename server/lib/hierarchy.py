@@ -104,16 +104,10 @@ class AbstractHierarchyModel(object):
         but requires that modifications to files in the workspace always create a new file (which
         is the case if files are only modified through the WebDAV FS mounted in a tale container).
         """
+
         new_version_path = Path(new_version["fsPath"])
-        manifest = Manifest(
-            tale, user, versionId=new_version["_id"], expand_folders=False
-        )
-        with open((new_version_path / "manifest.json").as_posix(), "w") as fp:
-            fp.write(manifest.dump_manifest())
 
-        with open((new_version_path / "environment.json").as_posix(), "w") as fp:
-            fp.write(manifest.dump_environment())
-
+        # Handle workspace
         oldWorkspace = (
             None if version is None else Path(version["fsPath"]) / "workspace"
         )
@@ -122,6 +116,31 @@ class AbstractHierarchyModel(object):
         newWorkspace = new_version_path / "workspace"
         newWorkspace.mkdir()
         self.snapshotRecursive(oldWorkspace, crtWorkspace, newWorkspace)
+
+        # Handle dataDir
+        root_data_folder = Folder().load(tale["dataDirId"], force=True)
+        current_data_folder = Folder().findOne({
+            "parentId": tale["dataDirId"],
+            "name": "current",
+            "parentCollection": "folder",
+        })
+        Folder().copyFolder(
+            current_data_folder,
+            parent=root_data_folder,
+            name=str(new_version["_id"]),
+            parentType="folder",
+            creator=user,
+        )
+
+        # Handle metadata (depends on new workspace and new datadir)
+        manifest = Manifest(
+            tale, user, versionId=new_version["_id"], expand_folders=False
+        )
+        with open((new_version_path / "manifest.json").as_posix(), "w") as fp:
+            fp.write(manifest.dump_manifest())
+
+        with open((new_version_path / "environment.json").as_posix(), "w") as fp:
+            fp.write(manifest.dump_environment())
 
     def is_same(self, tale, version, user):
         workspace = Folder().load(tale["workspaceId"], force=True)
