@@ -58,10 +58,10 @@ def addVersionsAndRuns(event: events.Event) -> None:
 def removeVersionsAndRuns(event: events.Event) -> None:
     tale = event.info
     for folder_id in (tale["runsRootId"], tale["versionsRootId"]):
-        root = Folder().load(folder_id, force=True)
-        Folder().remove(root)
-    shutil.rmtree(util.getTaleVersionsDirPath(tale))
-    shutil.rmtree(util.getTaleRunsDirPath(tale))
+        if (root := Folder().load(folder_id, force=True)):
+            Folder().remove(root)
+    shutil.rmtree(util.getTaleVersionsDirPath(tale), ignore_errors=True)
+    shutil.rmtree(util.getTaleRunsDirPath(tale), ignore_errors=True)
 
 
 def copyVersionsAndRuns(event: events.Event) -> None:
