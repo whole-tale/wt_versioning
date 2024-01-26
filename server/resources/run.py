@@ -12,7 +12,8 @@ from girder.plugins.jobs.constants import JobStatus
 from girder.plugins.wholetale.models.tale import Tale
 from girder.models.token import Token
 from girder.plugins.wholetale.utils import init_progress
-from gwvolman.tasks import recorded_run, RECORDED_RUN_STEP_TOTAL
+from gwvolman.tasks import recorded_run
+from gwvolman.tasks_docker import RECORDED_RUN_STEP_TOTAL
 from .abstract_resource import AbstractVRResource
 from ..constants import Constants, RunStatus, RunState, FIELD_STATUS_CODE
 from ..lib.run_hierarchy import RunHierarchyModel
