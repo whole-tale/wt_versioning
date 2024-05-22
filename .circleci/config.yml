@@ -2,7 +2,8 @@ version: 2.0
 jobs:
   build:
     docker:
-      - image: wholetale/girder:latest
+      - image: wholetale/girder:k8s
+        user: root
       - image: mongo:3.6
     steps:
       - checkout
@@ -23,14 +24,14 @@ jobs:
       - run:
           name: Running Tests
           environment:
-            - PYTHON_VERSION: "3.9"
+            - PYTHON_VERSION: "3.10"
             - COVERAGE_EXECUTABLE: "/girder/venv/bin/coverage"
             - FLAKE8_EXECUTABLE: "/girder/venv/bin/flake8"
             - VIRTUALENV_EXECUTABLE: "/girder/venv/bin/virtualenv"
             - PYTHON_EXECUTABLE: "/girder/venv/bin/python3"
             - TEST_GROUP: "python"
           command: |
-            mkdir /girder/build
+            mkdir -p /girder/build
             ctest -VV -S /girder/plugins/wt_versioning/cmake/circle_continuous.cmake
       - run:
           name: Install Codecov client
