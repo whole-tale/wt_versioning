@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> This repository is deprecated and no longer maintained. This plugin was incorporated into
+> [girder-wholetale](https://github.com/whole-tale/girder-wholetale).
+
 # The WholeTale Versioning Plugin
 <!-- TOC depthFrom:1 depthTo:4 withLinks:1 updateOnSave:1 orderedList:0 -->
 
